@@ -1,4 +1,52 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+} from '@nestjs/common';
+import { PrismaService } from 'src/prisma/prisma.service';
+import { MerchantRegister } from './types';
 
 @Injectable()
-export class MerchantsService {}
+export class MerchantsService {
+  constructor(private readonly prismaService: PrismaService) {}
+
+  async createMerchant(data: {
+    name: string;
+    email: string;
+    password: string;
+    address: string;
+    phoneNumber: string;
+  }) {
+    try {
+      return this.prismaService.merchant.create({
+        data,
+      });
+    } catch (error) {
+      throw new InternalServerErrorException('Error creating merchant');
+    }
+  }
+
+  async createMerchantAccount(user: MerchantRegister, hash: string) {
+    try {
+      const created = await this.createMerchant({
+        ...user,
+        password: hash,
+      });
+      return created;
+    } catch (error: any) {
+      if (error?.code === 'P2002' && error?.meta?.target?.includes('email')) {
+        throw new BadRequestException('Email already exists');
+      }
+      throw new InternalServerErrorException(
+        error?.message || 'Failed to create merchant account',
+      );
+    }
+  }
+
+  async findMerchant(email: string) {
+    const merchant = await this.prismaService.merchant.findUnique({
+      where: { email },
+    });
+    return merchant;
+  }
+}

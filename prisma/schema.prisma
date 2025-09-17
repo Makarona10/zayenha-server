@@ -59,15 +59,23 @@ model User {
   status      UserStatus @default(active)
   email       String     @unique @db.VarChar(150)
   password    String     @db.VarChar(255)
-  phoneNumber String?    @unique @db.VarChar(20)
+  phoneNumber String?    @db.VarChar(20)
   deletedAt   DateTime?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
-  addresses Address[]
-  orders    Order[]
-  carts     Cart[]
-  wishlist  Wishlist[]
+  addresses     Address[]
+  orders        Order[]
+  carts         Cart[]
+  wishlist      Wishlist[]
+  PasswordReset PasswordReset?
+}
+
+model PasswordReset {
+  userId    Int      @id
+  code      String
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Address {
@@ -90,6 +98,7 @@ model Merchant {
   email       String         @unique @db.VarChar(150)
   password    String         @db.VarChar(255)
   phoneNumber String         @unique @db.VarChar(20)
+  address     String         @db.VarChar(512)
   status      MerchantStatus @default(pending)
   deletedAt   DateTime?
   createdAt   DateTime       @default(now())
@@ -99,9 +108,11 @@ model Merchant {
 }
 
 model Category {
-  id        Int      @id @default(autoincrement())
-  name      String   @db.VarChar(255)
-  createdAt DateTime @default(now())
+  id            Int      @id @default(autoincrement())
+  nameInArabic  String   @db.VarChar(255)
+  nameInEnglish String   @db.VarChar(255)
+  createdAt     DateTime @default(now())
+  image         String   @db.Text
 
   productsMain Product[]         @relation("ProductMainCategory")
   productLinks ProductCategory[]
@@ -132,19 +143,20 @@ model Product {
   updatedAt  DateTime      @updatedAt
 
   merchant     Merchant             @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  mainCategory Category?            @relation("ProductMainCategory", fields: [categoryId], references: [id], onDelete: SetNull)
+  category     Category?            @relation("ProductMainCategory", fields: [categoryId], references: [id], onDelete: SetNull)
   translations ProductTranslation[]
   images       ProductImage[]
   categories   ProductCategory[]
   orderItems   OrderItem[]
   wishlistedBy Wishlist[]
   cartItems    CartItem[]
+  materialId   Int?                 @unique
+  material     Material?            @relation(fields: [materialId], references: [id], onDelete: SetNull)
 
   @@index([merchantId])
 }
 
 model ProductTranslation {
-  id               Int     @id @default(autoincrement())
   productId        Int
   languageCode     String  @db.VarChar(5)
   name             String  @db.VarChar(255)
@@ -153,7 +165,7 @@ model ProductTranslation {
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  @@unique([productId, languageCode])
+  @@id([productId, languageCode])
 }
 
 model ProductCategory {
@@ -167,18 +179,21 @@ model ProductCategory {
 }
 
 model ProductImage {
+  id        Int    @id @default(autoincrement())
   productId Int
   image     String @db.Text
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  @@id([productId, image])
+  @@unique([productId, image])
 }
 
 model Material {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique @db.VarChar(100)
-  createdAt DateTime @default(now())
+  id            Int      @id @default(autoincrement())
+  nameInArabic  String   @unique @db.VarChar(100)
+  nameInEnglish String   @unique @db.VarChar(100)
+  createdAt     DateTime @default(now())
+  product       Product?
 }
 
 model Order {
@@ -208,6 +223,8 @@ model OrderItem {
 
   order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, productId])
 }
 
 model Cart {
@@ -252,7 +269,7 @@ model Wishlist {
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  @@id([userId, productId])
+  @@unique([userId, productId])
 }
 
 model OrderCancellation {
