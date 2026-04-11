@@ -5,6 +5,7 @@ import {
   HttpException,
   HttpStatus,
   NotImplementedException,
+  Param,
   Post,
   Req,
   UploadedFiles,
@@ -133,5 +134,32 @@ export class ProductsController {
   @Get('get-products')
   async getProducts() {
     return this.productsService.getProducts();
+  }
+
+  @Get('get-product/:id')
+  async getProduct(@Param('id') id: number) {
+    if (!id) {
+      throw new HttpException('Product id is required', HttpStatus.BAD_REQUEST);
+    }
+    const product = await this.productsService.getProduct(+id);
+    if (!product) {
+      throw new HttpException('Product not found', HttpStatus.NOT_FOUND);
+    }
+    return resObj(200, 'Product fetched successfully', product);
+  }
+
+  @Get('related-products/:id')
+  async getRelatedProducts(@Param('id') id: number) {
+    if (!id) {
+      throw new HttpException('Product id is required', HttpStatus.BAD_REQUEST);
+    }
+
+    const relatedProducts = await this.productsService.getRelatedProducts(+id);
+
+    return resObj(
+      200,
+      'Related products fetched successfully',
+      relatedProducts,
+    );
   }
 }

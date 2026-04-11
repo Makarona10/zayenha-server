@@ -1,4 +1,9 @@
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { ProductAdd } from './types';
 import { Prisma } from '@prisma/client';
@@ -69,6 +74,7 @@ export class ProductsService {
             offerPrice: productData.offerPrice
               ? new Prisma.Decimal(productData.offerPrice)
               : undefined,
+            stockQuantity: productData.stockQuantity,
             mainImage: mainImagePath,
             sku: this.generateSKU(),
             status: 'pending',
@@ -144,5 +150,303 @@ export class ProductsService {
   //For testing
   async getProducts() {
     return this.prismaService.product.findMany();
+  }
+
+  async getRelatedProducts(productId: number) {
+    const currentProduct = await this.prismaService.product.findUnique({
+      where: { id: productId },
+      select: {
+        id: true,
+        price: true,
+        categoryId: true,
+        merchantId: true,
+      },
+    });
+
+    if (!currentProduct) {
+      throw new NotFoundException('Product not found');
+    }
+
+    const priceMin = +currentProduct.price * 0.8;
+    const priceMax = +currentProduct.price * 1.2;
+
+    const [newProducts, bestSellers, sameCategory, sameMerchant] =
+      await Promise.all([
+        this.getNewProducts(productId, priceMin, priceMax, 3),
+        this.getBestSellers(productId, priceMin, priceMax, 3),
+        this.getSameCategory(productId, currentProduct.categoryId, 3),
+        this.getSameMerchant(productId, currentProduct.merchantId, 3),
+      ]);
+
+    const allProducts = [
+      ...newProducts,
+      ...bestSellers,
+      ...sameCategory,
+      ...sameMerchant,
+    ];
+
+    const uniqueProducts = this.removeDuplicates(allProducts);
+
+    if (uniqueProducts.length < 12) {
+      const needed = 12 - uniqueProducts.length;
+      const existingIds = uniqueProducts.map((p) => p.id);
+
+      const fillerProducts = await this.getFillerProducts(
+        productId,
+        existingIds,
+        needed,
+      );
+
+      uniqueProducts.push(...fillerProducts);
+    }
+
+    return uniqueProducts.slice(0, 12);
+  }
+
+  private async getNewProducts(
+    excludeProductId: number,
+    priceMin: number,
+    priceMax: number,
+    limit: number,
+  ) {
+    return this.prismaService.product.findMany({
+      where: {
+        id: { not: excludeProductId },
+        // status: 'approved',
+        stockQuantity: { gt: 0 },
+        OR: [
+          { price: { gte: priceMin, lte: priceMax } },
+          { offerPrice: { gte: priceMin, lte: priceMax } },
+        ],
+      },
+      include: {
+        translations: true,
+        images: {
+          take: 1,
+          orderBy: { id: 'asc' },
+        },
+        material: {
+          select: {
+            id: true,
+            nameInEnglish: true,
+            nameInArabic: true,
+          },
+        },
+        category: {
+          select: {
+            id: true,
+            nameInEnglish: true,
+            nameInArabic: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: limit,
+    });
+  }
+
+  private async getBestSellers(
+    excludeProductId: number,
+    priceMin: number,
+    priceMax: number,
+    limit: number,
+  ) {
+    return this.prismaService.product.findMany({
+      where: {
+        id: { not: excludeProductId },
+        // status: 'approved',
+        stockQuantity: { gt: 0 },
+        price: { gte: priceMin, lte: priceMax },
+      },
+      include: {
+        translations: true,
+        images: {
+          take: 1,
+          orderBy: { id: 'asc' },
+        },
+        material: {
+          select: {
+            id: true,
+            nameInEnglish: true,
+            nameInArabic: true,
+          },
+        },
+        category: {
+          select: {
+            id: true,
+            nameInEnglish: true,
+            nameInArabic: true,
+          },
+        },
+        _count: {
+          select: {
+            orderItems: true,
+          },
+        },
+      },
+      orderBy: {
+        orderItems: {
+          _count: 'desc',
+        },
+      },
+      take: limit,
+    });
+  }
+
+  private async getSameCategory(
+    excludeProductId: number,
+    categoryId: number | null,
+    limit: number,
+  ) {
+    if (!categoryId) {
+      return [];
+    }
+
+    return this.prismaService.product.findMany({
+      where: {
+        id: { not: excludeProductId },
+        // status: 'approved',
+        stockQuantity: { gt: 0 },
+        OR: [{ categoryId }, { categories: { some: { categoryId } } }],
+      },
+      include: {
+        translations: true,
+        images: {
+          take: 1,
+          orderBy: { id: 'asc' },
+        },
+        material: {
+          select: {
+            id: true,
+            nameInEnglish: true,
+            nameInArabic: true,
+          },
+        },
+        category: {
+          select: {
+            id: true,
+            nameInEnglish: true,
+            nameInArabic: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: limit,
+    });
+  }
+
+  private async getSameMerchant(
+    excludeProductId: number,
+    merchantId: number,
+    limit: number,
+  ) {
+    return this.prismaService.product.findMany({
+      where: {
+        id: { not: excludeProductId },
+        merchantId,
+        // status: 'approved',
+        stockQuantity: { gt: 0 },
+      },
+      include: {
+        translations: true,
+        images: {
+          take: 1,
+          orderBy: { id: 'asc' },
+        },
+        material: {
+          select: {
+            id: true,
+            nameInEnglish: true,
+            nameInArabic: true,
+          },
+        },
+        category: {
+          select: {
+            id: true,
+            nameInEnglish: true,
+            nameInArabic: true,
+          },
+        },
+      },
+      orderBy: {
+        orderItems: {
+          _count: 'desc',
+        },
+      },
+      take: limit,
+    });
+  }
+
+  private async getFillerProducts(
+    excludeProductId: number,
+    excludeIds: number[],
+    limit: number,
+  ) {
+    return this.prismaService.product.findMany({
+      where: {
+        id: {
+          notIn: [excludeProductId, ...excludeIds],
+        },
+        status: 'approved',
+        stockQuantity: { gt: 0 },
+      },
+      include: {
+        translations: true,
+        images: {
+          take: 1,
+          orderBy: { id: 'asc' },
+        },
+        material: {
+          select: {
+            id: true,
+            nameInEnglish: true,
+            nameInArabic: true,
+          },
+        },
+        category: {
+          select: {
+            id: true,
+            nameInEnglish: true,
+            nameInArabic: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: limit,
+    });
+  }
+
+  private removeDuplicates(products: any[]) {
+    const seen = new Set<number>();
+    return products.filter((product) => {
+      if (seen.has(product.id)) {
+        return false;
+      }
+      seen.add(product.id);
+      return true;
+    });
+  }
+
+  async getProduct(id: number) {
+    const product = await this.prismaService.product.findUnique({
+      where: {
+        id,
+        //  status: 'approved'
+      },
+      include: {
+        translations: true,
+        images: true,
+        material: true,
+        categories: { include: { category: true } },
+      },
+    });
+
+    return product;
   }
 }
