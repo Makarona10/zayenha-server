@@ -27,6 +27,7 @@ enum ProductStatus {
 }
 
 enum OrderStatus {
+  pending_payment
   confirmed
   delivered
   canceled
@@ -44,13 +45,23 @@ enum TransactionStatus {
   failed
 }
 
-enum CanceledBy {
-  client
-  merchant
-  admin
+enum CancellationStatus {
+  pending
+  approved
+  rejected
 }
 
-// ========================= MODELS =========================
+model Admin {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique @db.VarChar(150)
+  password  String   @db.VarChar(255)
+  firstName String   @db.VarChar(100)
+  lastName  String   @db.VarChar(100)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reviewedCancellations CancellationRequest[]
+}
 
 model User {
   id          Int        @id @default(autoincrement())
@@ -64,11 +75,12 @@ model User {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
-  addresses     Address[]
-  orders        Order[]
-  carts         Cart[]
-  wishlist      Wishlist[]
-  PasswordReset PasswordReset?
+  addresses            Address[]
+  orders               Order[]
+  cart                 Cart?
+  wishlist             Wishlist[]
+  PasswordReset        PasswordReset?
+  cancellationRequests CancellationRequest[]
 }
 
 model PasswordReset {
@@ -131,27 +143,29 @@ model CategoryParent {
 }
 
 model Product {
-  id         Int           @id @default(autoincrement())
-  merchantId Int
-  categoryId Int?
-  price      Decimal       @db.Decimal(10, 2)
-  offerPrice Decimal?      @db.Decimal(10, 2)
-  mainImage  String        @db.Text
-  sku        String        @unique @db.VarChar(50)
-  status     ProductStatus @default(pending)
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+  id            Int           @id @default(autoincrement())
+  merchantId    Int
+  categoryId    Int?
+  price         Decimal       @db.Decimal(10, 2)
+  offerPrice    Decimal?      @db.Decimal(10, 2)
+  mainImage     String        @db.Text
+  sku           String        @unique @db.VarChar(50)
+  status        ProductStatus @default(pending)
+  stockQuantity Int           @default(0)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
-  merchant     Merchant             @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  category     Category?            @relation("ProductMainCategory", fields: [categoryId], references: [id], onDelete: SetNull)
-  translations ProductTranslation[]
-  images       ProductImage[]
-  categories   ProductCategory[]
-  orderItems   OrderItem[]
-  wishlistedBy Wishlist[]
-  cartItems    CartItem[]
-  materialId   Int?                 @unique
-  material     Material?            @relation(fields: [materialId], references: [id], onDelete: SetNull)
+  merchant          Merchant             @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  category          Category?            @relation("ProductMainCategory", fields: [categoryId], references: [id], onDelete: SetNull)
+  translations      ProductTranslation[]
+  images            ProductImage[]
+  categories        ProductCategory[]
+  orderItems        OrderItem[]
+  wishlistedBy      Wishlist[]
+  cartItems         CartItem[]
+  materialId        Int?
+  material          Material?            @relation(fields: [materialId], references: [id], onDelete: SetNull)
+  ProductAttributes ProductAttribute[]
 
   @@index([merchantId])
 }
@@ -166,6 +180,20 @@ model ProductTranslation {
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@id([productId, languageCode])
+}
+
+model ProductAttribute {
+  id             Int    @id @default(autoincrement())
+  productId      Int
+  nameInEnglish  String @db.VarChar(255)
+  nameInArabic   String @db.VarChar(255)
+  valueInEnglish String @db.VarChar(255)
+  valueInArabic  String @db.VarChar(255)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, nameInEnglish])
+  @@index([productId])
 }
 
 model ProductCategory {
@@ -189,29 +217,29 @@ model ProductImage {
 }
 
 model Material {
-  id            Int      @id @default(autoincrement())
-  nameInArabic  String   @unique @db.VarChar(100)
-  nameInEnglish String   @unique @db.VarChar(100)
-  createdAt     DateTime @default(now())
-  product       Product?
+  id            Int       @id @default(autoincrement())
+  nameInArabic  String    @unique @db.VarChar(100)
+  nameInEnglish String    @unique @db.VarChar(100)
+  createdAt     DateTime  @default(now())
+  product       Product[]
 }
 
 model Order {
-  id            Int           @id @default(autoincrement())
-  userId        Int
-  addressId     Int?
-  totalAmount   Decimal       @db.Decimal(10, 2)
-  status        OrderStatus   @default(confirmed)
-  paymentMethod PaymentMethod
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id               Int           @id @default(autoincrement())
+  userId           Int
+  addressId        Int?
+  totalAmount      Decimal       @db.Decimal(10, 2)
+  status           OrderStatus   @default(confirmed)
+  paymentMethod    PaymentMethod
+  paymentExpiresAt DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
-  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  address       Address?           @relation(fields: [addressId], references: [id], onDelete: SetNull)
-  items         OrderItem[]
-  transaction   Transaction[]
-  cancellation  OrderCancellation?
-  transactionId Int
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  address      Address?             @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  items        OrderItem[]
+  transaction  Transaction[]
+  cancellation CancellationRequest?
 }
 
 model OrderItem {
@@ -229,7 +257,7 @@ model OrderItem {
 
 model Cart {
   id        Int       @id @default(autoincrement())
-  userId    Int
+  userId    Int       @unique
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   expiresAt DateTime?
@@ -272,12 +300,21 @@ model Wishlist {
   @@unique([userId, productId])
 }
 
-model OrderCancellation {
-  id         Int        @id @default(autoincrement())
-  orderId    Int        @unique
-  canceledBy CanceledBy
-  reason     String?    @db.Text
-  canceledAt DateTime   @default(now())
+model CancellationRequest {
+  id          Int                @id @default(autoincrement())
+  orderId     Int                @unique
+  userId      Int
+  status      CancellationStatus @default(pending)
+  reason      String?            @db.Text
+  requestedAt DateTime           @default(now())
+  reviewedBy  Int?
+  reviewedAt  DateTime?
+  adminNotes  String?            @db.Text
 
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order           Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  requestedByUser User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reviewedByAdmin Admin? @relation(fields: [reviewedBy], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([userId])
 }
