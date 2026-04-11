@@ -5,8 +5,16 @@ export interface ProductAdd {
   offerPrice?: number;
   descriptionInArabic: string;
   descriptionInEnglish: string;
-  shortDesciptionInArabic: string;
-  shortDesciptionInEnglish: string;
-  category: number;
-  material?: number;
+  shortDescriptionInArabic: string;
+  shortDescriptionInEnglish: string;
+  categories?: number[];
+  sku: string;
+  stockQuantity: number;
+  materialId?: number;
+  attributes?: Array<{
+    nameInEnglish: string;
+    nameInArabic: string;
+    valueInEnglish: string;
+    valueInArabic: string;
+  }>;
 }

@@ -128,4 +128,10 @@ export class ProductsController {
       );
     }
   }
+
+  // For testing
+  @Get('get-products')
+  async getProducts() {
+    return this.productsService.getProducts();
+  }
 }

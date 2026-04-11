@@ -43,15 +43,15 @@ export class ProductsService {
         }
 
         const category = await tx.category.findUnique({
-          where: { id: productData.category },
+          where: { id: productData.categories[0] },
         });
         if (!category) {
           throw new HttpException('Category not found', HttpStatus.BAD_REQUEST);
         }
 
-        if (productData.material) {
+        if (productData.materialId) {
           const material = await tx.material.findUnique({
-            where: { id: productData.material },
+            where: { id: productData.materialId },
           });
           if (!material) {
             throw new HttpException(
@@ -64,7 +64,7 @@ export class ProductsService {
         const product = await tx.product.create({
           data: {
             merchantId: merchant.id,
-            categoryId: productData.category,
+            categoryId: productData.categories[0],
             price: new Prisma.Decimal(productData.price),
             offerPrice: productData.offerPrice
               ? new Prisma.Decimal(productData.offerPrice)
@@ -72,7 +72,7 @@ export class ProductsService {
             mainImage: mainImagePath,
             sku: this.generateSKU(),
             status: 'pending',
-            materialId: productData.material ?? null,
+            materialId: productData.materialId ?? null,
           },
         });
 
@@ -82,18 +82,32 @@ export class ProductsService {
               productId: product.id,
               languageCode: 'ar',
               name: productData.nameInArabic,
-              shortDescription: productData.shortDesciptionInArabic,
+              shortDescription: productData.shortDescriptionInArabic,
               description: productData.descriptionInArabic,
             },
             {
               productId: product.id,
               languageCode: 'en',
               name: productData.nameInEnglish,
-              shortDescription: productData.shortDesciptionInEnglish,
+              shortDescription: productData.shortDescriptionInEnglish,
               description: productData.descriptionInEnglish,
             },
           ],
         });
+
+        if (
+          typeof productData.attributes !== 'undefined' &&
+          productData.attributes.length > 0
+        )
+          await tx.productAttribute.createMany({
+            data: productData.attributes.map((attr) => ({
+              productId: product.id,
+              nameInArabic: attr.nameInArabic,
+              nameInEnglish: attr.nameInEnglish,
+              valueInArabic: attr.valueInArabic,
+              valueInEnglish: attr.valueInEnglish,
+            })),
+          });
 
         if (secondaryImagePaths && secondaryImagePaths.length > 0) {
           const imagesData = secondaryImagePaths.map((p) => ({
@@ -106,7 +120,7 @@ export class ProductsService {
         await tx.productCategory.create({
           data: {
             productId: product.id,
-            categoryId: productData.category,
+            categoryId: productData.categories[0],
           },
         });
 
@@ -125,5 +139,10 @@ export class ProductsService {
       .catch((err) => {
         throw err;
       });
+  }
+
+  //For testing
+  async getProducts() {
+    return this.prismaService.product.findMany();
   }
 }
