@@ -14,6 +14,7 @@ import { PassportModule } from '@nestjs/passport';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { MerchantsService } from 'src/merchants/merchants.service';
 import { MerchantIdMiddleware } from './middlewares/merchant-validate.middleware';
+import { OptionalJwtStrategy } from './optional-jwt.strategy';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { MerchantIdMiddleware } from './middlewares/merchant-validate.middleware
     MerchantsService,
     LocalStrategy,
     JwtStrategy,
+    OptionalJwtStrategy,
     RedisService,
     ConfigService,
   ],

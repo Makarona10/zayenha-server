@@ -18,7 +18,9 @@ import { MerchantRegisterDto, RegisterDto } from './dto/register.dto';
 import { Payload } from './interfaces/payload.interface';
 import { resObj } from 'src/utils';
 import { MerchantsService } from 'src/merchants/merchants.service';
+import { Throttle } from '@nestjs/throttler';
 
+@Throttle({ default: { ttl: 60000, limit: 10 } })
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -100,7 +102,6 @@ export class AuthController {
     @Res() res: Response,
   ) {
     const merchant = (req as any).merchant as Payload;
-    console.log('here');
     const vaildatedMerchant = await this.authService.validateMerchant({
       email: merchant.email,
       password: body.password,

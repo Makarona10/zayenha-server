@@ -24,7 +24,8 @@ import { PrismaModule } from './prisma/prisma.module';
 import { UsersController } from './users/users.controller';
 import { UsersModule } from './users/users.module';
 import { ConfigModule } from '@nestjs/config';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 
 @Module({
   imports: [
@@ -47,8 +48,9 @@ import { ThrottlerModule } from '@nestjs/throttler';
     ThrottlerModule.forRoot({
       throttlers: [
         {
+          name: 'default',
           ttl: 60000,
-          limit: 50,
+          limit: 3,
         },
       ],
     }),
@@ -70,6 +72,10 @@ import { ThrottlerModule } from '@nestjs/throttler';
     TransactionsService,
     CategoriesService,
     PrismaService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
   ],
 })
 export class AppModule {}
