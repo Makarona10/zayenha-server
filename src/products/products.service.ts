@@ -7,10 +7,16 @@ import {
 import { PrismaService } from 'src/prisma/prisma.service';
 import { ProductAdd } from './types';
 import { Prisma } from '@prisma/client';
+import { WinstonLogger } from 'src/logger/winston.logger';
+import { CategoriesService } from 'src/categories/categories.service';
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly prismaService: PrismaService) {}
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly categoryService: CategoriesService,
+    private readonly winston: WinstonLogger,
+  ) {}
 
   private generateSKU(): string {
     return `SKU-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
@@ -448,5 +454,68 @@ export class ProductsService {
     });
 
     return product;
+  }
+
+  async getProductsByCategory(
+    id: number,
+    sortByDate: 'asc' | 'desc' = 'desc',
+    page: number = 1,
+    limit: number = 16,
+    userId?: number,
+  ) {
+    try {
+      const categoryExists = await this.categoryService.categoryExists(id);
+      if (!categoryExists) {
+        throw new HttpException('Category not found', HttpStatus.NOT_FOUND);
+      }
+      let products = await this.prismaService.product.findMany({
+        where: {
+          // status: 'approved',
+          stockQuantity: { gt: 0 },
+          categoryId: id,
+        },
+        include: {
+          images: true,
+          wishlistedBy: userId
+            ? {
+                where: {
+                  userId,
+                },
+              }
+            : false,
+        },
+        orderBy: {
+          createdAt: sortByDate,
+        },
+        skip: (page - 1) * limit,
+        take: limit,
+      });
+
+      const productsCount = await this.prismaService.product.count({
+        where: {
+          // status: 'approved',
+          stockQuantity: { gt: 0 },
+          categoryId: id,
+        },
+      });
+
+      products = products.map((product) => {
+        return {
+          ...product,
+          wishlisted: product.wishlistedBy?.length > 0,
+        };
+      });
+
+      return {
+        products,
+        productsCount,
+      };
+    } catch (error: any) {
+      this.winston.error(error.message, error.stack);
+      throw new HttpException(
+        'Error happened while retrieving products',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 }

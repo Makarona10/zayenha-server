@@ -6,7 +6,9 @@ import {
   HttpStatus,
   NotImplementedException,
   Param,
+  ParseIntPipe,
   Post,
+  Query,
   Req,
   UploadedFiles,
   UseGuards,
@@ -21,6 +23,8 @@ import { diskStorage } from 'multer';
 import { extname } from 'path';
 import * as fs from 'fs';
 import { removeFilesIfExists } from 'src/utils/fileUtils';
+import { Request } from 'express';
+import { OptionalJwtAuthGuard } from 'src/auth/optional-jwt-auth.guard';
 
 const UPLOAD_DIR = '../uploads/products/';
 
@@ -52,7 +56,6 @@ export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
   @Get('homepage')
-  @UseGuards(JwtAuthGuard)
   async getHomePageProducts() {
     throw new NotImplementedException('Under implementation');
   }
@@ -132,6 +135,7 @@ export class ProductsController {
 
   // For testing
   @Get('get-products')
+  @UseGuards(OptionalJwtAuthGuard)
   async getProducts() {
     return this.productsService.getProducts();
   }
@@ -161,5 +165,32 @@ export class ProductsController {
       'Related products fetched successfully',
       relatedProducts,
     );
+  }
+
+  @Get('category/:id')
+  @UseGuards(OptionalJwtAuthGuard)
+  async getProductsByCategory(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('sortByDate') sortByDate: 'asc' | 'desc',
+    @Query('page') page: number,
+    @Query('limit') limit: number,
+    @Req() req: Request,
+  ) {
+    if (!id) {
+      throw new HttpException(
+        'Category id is required',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const user = req.user as { id: number };
+    const products = await this.productsService.getProductsByCategory(
+      +id,
+      sortByDate,
+      page,
+      limit,
+      user?.id,
+    );
+    return resObj(200, 'Products fetched successfully', products);
   }
 }
