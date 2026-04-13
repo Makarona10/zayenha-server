@@ -1,9 +1,12 @@
 import {
+  BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpException,
   HttpStatus,
+  NotFoundException,
   NotImplementedException,
   Param,
   ParseIntPipe,
@@ -12,6 +15,7 @@ import {
   Put,
   Query,
   Req,
+  UnauthorizedException,
   UploadedFiles,
   UseGuards,
   UseInterceptors,
@@ -43,16 +47,11 @@ function filenameFactory(originalName: string) {
 }
 
 function imageFileFilter(req, file, cb) {
-  if (!file.mimetype)
-    return cb(new HttpException('Invalid file', HttpStatus.BAD_REQUEST), false);
+  if (!file.mimetype) return cb(new BadRequestException('Invalid file'), false);
   const allowed = /jpeg|jpg|png|webp/;
   const ok = allowed.test(file.mimetype);
   if (ok) cb(null, true);
-  else
-    cb(
-      new HttpException('Only image files are allowed', HttpStatus.BAD_REQUEST),
-      false,
-    );
+  else cb(new BadRequestException('Only image files are allowed'), false);
 }
 
 function cleanupUploadedFiles(files: {
@@ -115,7 +114,7 @@ export class ProductsController {
 
     if (!user || !user.id) {
       cleanupUploadedFiles(files);
-      throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
+      throw new UnauthorizedException('Unauthorized');
     }
 
     const isMerchantActive = await this.merchantService.isMerchantActive(
@@ -124,12 +123,12 @@ export class ProductsController {
 
     if (!isMerchantActive) {
       cleanupUploadedFiles(files);
-      throw new HttpException('Merchant is not active', HttpStatus.FORBIDDEN);
+      throw new ForbiddenException('Merchant is not active');
     }
 
     const mainFile = files?.mainImage?.[0];
     if (!mainFile) {
-      throw new HttpException('Main image is required', HttpStatus.BAD_REQUEST);
+      throw new BadRequestException('Main image is required');
     }
 
     const secondaryFiles = files?.secondaryImages ?? [];
@@ -176,11 +175,11 @@ export class ProductsController {
   ) {
     const user = req.user as Payload;
     if (!id) {
-      throw new HttpException('Product id is required', HttpStatus.BAD_REQUEST);
+      throw new BadRequestException('Product id is required');
     }
     const product = await this.productsService.getProduct(+id);
     if (!product) {
-      throw new HttpException('Product not found', HttpStatus.NOT_FOUND);
+      throw new NotFoundException('Product not found');
     }
     return resObj(200, 'Product fetched successfully', product);
   }
@@ -190,11 +189,11 @@ export class ProductsController {
   async getMerchantProduct(@Param('id') id: number, @Req() req: Request) {
     const user = req.user as Payload;
     if (user.role !== 'merchant') {
-      throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
+      throw new ForbiddenException('You are not allowed to access this route');
     }
     const product = await this.productsService.getMerchantProduct(+id, user.id);
     if (!product) {
-      throw new HttpException('Product not found', HttpStatus.NOT_FOUND);
+      throw new NotFoundException('Product not found');
     }
     return resObj(200, 'Merchant products fetched successfully', product);
   }
@@ -208,7 +207,7 @@ export class ProductsController {
     id: number,
   ) {
     if (!id) {
-      throw new HttpException('Product id is required', HttpStatus.BAD_REQUEST);
+      throw new BadRequestException('Product id is required');
     }
 
     const relatedProducts = await this.productsService.getRelatedProducts(+id);
@@ -234,10 +233,7 @@ export class ProductsController {
     @Req() req: Request,
   ) {
     if (!id) {
-      throw new HttpException(
-        'Category id is required',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new BadRequestException('Category id is required');
     }
 
     const user = req.user as { id: number };
@@ -259,7 +255,7 @@ export class ProductsController {
     @Req() req: Request,
   ) {
     if (!id) {
-      throw new HttpException('Product id is required', HttpStatus.BAD_REQUEST);
+      throw new BadRequestException('Product id is required');
     }
     const user = req.user as { id: number };
     await this.productsService.updateOfferPrice(+id, user.id, offerPrice);
@@ -282,7 +278,7 @@ export class ProductsController {
     @Req() req: Request,
   ) {
     if (!id) {
-      throw new HttpException('Product id is required', HttpStatus.BAD_REQUEST);
+      throw new BadRequestException('Product id is required');
     }
     const user = req.user as { id: number };
     await this.productsService.updateQuantity(+id, user.id, quantity);
@@ -300,7 +296,7 @@ export class ProductsController {
     @Req() req: Request,
   ) {
     if (!id) {
-      throw new HttpException('Product id is required', HttpStatus.BAD_REQUEST);
+      throw new BadRequestException('Product id is required');
     }
     const user = req.user as { id: number };
     await this.productsService.suspendProduct(+id, user.id);

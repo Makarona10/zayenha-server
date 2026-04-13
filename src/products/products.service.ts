@@ -1,6 +1,6 @@
 import {
-  HttpException,
-  HttpStatus,
+  BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -45,17 +45,14 @@ export class ProductsService {
           where: { id: userId },
         });
         if (!merchant) {
-          throw new HttpException(
-            'Merchant account not found',
-            HttpStatus.BAD_REQUEST,
-          );
+          throw new BadRequestException('Merchant account not found');
         }
 
         const category = await tx.category.findUnique({
           where: { id: productData.categories[0] },
         });
         if (!category) {
-          throw new HttpException('Category not found', HttpStatus.BAD_REQUEST);
+          throw new BadRequestException('Category not found');
         }
 
         if (productData.materialId) {
@@ -63,10 +60,7 @@ export class ProductsService {
             where: { id: productData.materialId },
           });
           if (!material) {
-            throw new HttpException(
-              'Material not found',
-              HttpStatus.BAD_REQUEST,
-            );
+            throw new BadRequestException('Material not found');
           }
         }
 
@@ -490,7 +484,7 @@ export class ProductsService {
   ) {
     const categoryExists = await this.categoryService.categoryExists(id);
     if (!categoryExists) {
-      throw new HttpException('Category not found', HttpStatus.NOT_FOUND);
+      throw new NotFoundException('Category not found');
     }
     let products = await this.prismaService.product.findMany({
       where: {
@@ -544,12 +538,11 @@ export class ProductsService {
     });
 
     if (!product) {
-      throw new HttpException('Product not found', HttpStatus.NOT_FOUND);
+      throw new NotFoundException('Product not found');
     }
     if (product.merchantId !== merchantId) {
-      throw new HttpException(
+      throw new ForbiddenException(
         'You are not authorized to update this product',
-        HttpStatus.FORBIDDEN,
       );
     }
     return this.prismaService.product.update({
@@ -576,7 +569,7 @@ export class ProductsService {
     });
 
     if (!product) {
-      throw new HttpException('Product not found', HttpStatus.NOT_FOUND);
+      throw new NotFoundException('Product not found');
     }
     return product;
   }
@@ -594,7 +587,7 @@ export class ProductsService {
     });
 
     if (!product) {
-      throw new HttpException('Product not found', HttpStatus.NOT_FOUND);
+      throw new NotFoundException('Product not found');
     }
     return product;
   }
