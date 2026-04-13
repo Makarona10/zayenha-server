@@ -17,13 +17,9 @@ export class MerchantsService {
     address: string;
     phoneNumber: string;
   }) {
-    try {
-      return this.prismaService.merchant.create({
-        data,
-      });
-    } catch (error) {
-      throw new InternalServerErrorException('Error creating merchant');
-    }
+    return this.prismaService.merchant.create({
+      data,
+    });
   }
 
   async createMerchantAccount(user: MerchantRegister, hash: string) {
@@ -48,5 +44,12 @@ export class MerchantsService {
       where: { email },
     });
     return merchant;
+  }
+
+  async isMerchantActive(id: number) {
+    const merchant = await this.prismaService.merchant.findUnique({
+      where: { id },
+    });
+    return merchant.status === 'approved' ? true : false;
   }
 }

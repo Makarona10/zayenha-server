@@ -9,21 +9,14 @@ export class UsersService {
 
   async createUser(user: User, hash: string) {
     user.email = user.email.toLowerCase();
-    try {
-      const existingUser = await this.findUser(user.email);
-      if (existingUser) {
-        throw new BadRequestException('User with this email already exists');
-      }
-
-      return this.prisma.user.create({
-        data: { ...user, password: hash },
-      });
-    } catch (error) {
-      throw new HttpException(
-        error?.message || 'Internal server error',
-        error?.status || 500,
-      );
+    const existingUser = await this.findUser(user.email);
+    if (existingUser) {
+      throw new BadRequestException('User with this email already exists');
     }
+
+    return this.prisma.user.create({
+      data: { ...user, password: hash },
+    });
   }
 
   async findUser(email: string): Promise<User> {

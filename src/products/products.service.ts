@@ -24,15 +24,13 @@ export class ProductsService {
 
   //TODO: TO BE IMPLEMENTED AFTER CREATING FEATURED PRODUCTS TABLE
   async getHomePageProducts() {
-    try {
-      const featured = await this.prismaService.product.findMany({
-        where: {
-          id: {
-            in: [],
-          },
+    const featured = await this.prismaService.product.findMany({
+      where: {
+        id: {
+          in: [],
         },
-      });
-    } catch (error) {}
+      },
+    });
   }
 
   async addProductToDB(
@@ -160,7 +158,14 @@ export class ProductsService {
 
   async getRelatedProducts(productId: number) {
     const currentProduct = await this.prismaService.product.findUnique({
-      where: { id: productId },
+      where: {
+        id: productId,
+        status: 'approved',
+        stockQuantity: { gt: 0 },
+        merchant: {
+          status: 'approved',
+        },
+      },
       select: {
         id: true,
         price: true,
@@ -218,7 +223,7 @@ export class ProductsService {
     return this.prismaService.product.findMany({
       where: {
         id: { not: excludeProductId },
-        // status: 'approved',
+        status: 'approved',
         stockQuantity: { gt: 0 },
         OR: [
           { price: { gte: priceMin, lte: priceMax } },
@@ -313,7 +318,7 @@ export class ProductsService {
     return this.prismaService.product.findMany({
       where: {
         id: { not: excludeProductId },
-        // status: 'approved',
+        status: 'approved',
         stockQuantity: { gt: 0 },
         OR: [{ categoryId }, { categories: { some: { categoryId } } }],
       },
@@ -443,7 +448,10 @@ export class ProductsService {
     const product = await this.prismaService.product.findUnique({
       where: {
         id,
-        //  status: 'approved'
+        status: 'approved',
+        merchant: {
+          status: 'approved',
+        },
       },
       include: {
         translations: true,
@@ -456,6 +464,23 @@ export class ProductsService {
     return product;
   }
 
+  async getMerchantProduct(id: number, merchantId: number) {
+    const product = await this.prismaService.product.findUnique({
+      where: {
+        id,
+        merchantId,
+      },
+      include: {
+        translations: true,
+        images: true,
+        material: true,
+        categories: { include: { category: true } },
+        ProductAttributes: true,
+      },
+    });
+    return product;
+  }
+
   async getProductsByCategory(
     id: number,
     sortByDate: 'asc' | 'desc' = 'desc',
@@ -463,59 +488,114 @@ export class ProductsService {
     limit: number = 16,
     userId?: number,
   ) {
-    try {
-      const categoryExists = await this.categoryService.categoryExists(id);
-      if (!categoryExists) {
-        throw new HttpException('Category not found', HttpStatus.NOT_FOUND);
-      }
-      let products = await this.prismaService.product.findMany({
-        where: {
-          // status: 'approved',
-          stockQuantity: { gt: 0 },
-          categoryId: id,
-        },
-        include: {
-          images: true,
-          wishlistedBy: userId
-            ? {
-                where: {
-                  userId,
-                },
-              }
-            : false,
-        },
-        orderBy: {
-          createdAt: sortByDate,
-        },
-        skip: (page - 1) * limit,
-        take: limit,
-      });
+    const categoryExists = await this.categoryService.categoryExists(id);
+    if (!categoryExists) {
+      throw new HttpException('Category not found', HttpStatus.NOT_FOUND);
+    }
+    let products = await this.prismaService.product.findMany({
+      where: {
+        status: 'approved',
+        stockQuantity: { gt: 0 },
+        categoryId: id,
+      },
+      include: {
+        images: true,
+        wishlistedBy: userId
+          ? {
+              where: {
+                userId,
+              },
+            }
+          : false,
+      },
+      orderBy: {
+        createdAt: sortByDate,
+      },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
 
-      const productsCount = await this.prismaService.product.count({
-        where: {
-          // status: 'approved',
-          stockQuantity: { gt: 0 },
-          categoryId: id,
-        },
-      });
+    const productsCount = await this.prismaService.product.count({
+      where: {
+        status: 'approved',
+        stockQuantity: { gt: 0 },
+        categoryId: id,
+      },
+    });
 
-      products = products.map((product) => {
-        return {
-          ...product,
-          wishlisted: product.wishlistedBy?.length > 0,
-        };
-      });
-
+    products = products.map((product) => {
       return {
-        products,
-        productsCount,
+        ...product,
+        wishlisted: product.wishlistedBy?.length > 0,
       };
-    } catch (error: any) {
-      this.winston.error(error.message, error.stack);
+    });
+
+    return {
+      products,
+      productsCount,
+    };
+  }
+
+  async updateOfferPrice(id: number, merchantId: number, offerPrice: number) {
+    const product = await this.prismaService.product.findUnique({
+      where: {
+        id,
+      },
+    });
+
+    if (!product) {
+      throw new HttpException('Product not found', HttpStatus.NOT_FOUND);
+    }
+    if (product.merchantId !== merchantId) {
       throw new HttpException(
-        'Error happened while retrieving products',
-        HttpStatus.INTERNAL_SERVER_ERROR,
+        'You are not authorized to update this product',
+        HttpStatus.FORBIDDEN,
       );
     }
+    return this.prismaService.product.update({
+      where: {
+        id,
+      },
+      data: {
+        offerPrice,
+        updatedAt: new Date(),
+      },
+    });
+  }
+
+  async updateQuantity(id: number, merchantId: number, quantity: number) {
+    const product = await this.prismaService.product.update({
+      where: {
+        id,
+        merchantId,
+      },
+      data: {
+        stockQuantity: quantity,
+        updatedAt: new Date(),
+      },
+    });
+
+    if (!product) {
+      throw new HttpException('Product not found', HttpStatus.NOT_FOUND);
+    }
+    return product;
+  }
+
+  async suspendProduct(id: number, merchantId: number) {
+    const product = await this.prismaService.product.update({
+      where: {
+        id,
+        merchantId,
+      },
+      data: {
+        status: 'suspended',
+        updatedAt: new Date(),
+      },
+    });
+
+    if (!product) {
+      throw new HttpException('Product not found', HttpStatus.NOT_FOUND);
+    }
+    return product;
   }
 }

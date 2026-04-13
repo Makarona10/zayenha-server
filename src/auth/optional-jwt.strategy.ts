@@ -18,7 +18,6 @@ export class OptionalJwtStrategy extends PassportStrategy(
   }
 
   validate(payload: Payload) {
-    console.log('payload', payload);
-    return { id: payload.id, email: payload.email };
+    return { id: payload.id, email: payload.email, role: payload.role };
   }
 }

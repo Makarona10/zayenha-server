@@ -7,7 +7,9 @@ import {
   NotImplementedException,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
+  Put,
   Query,
   Req,
   UploadedFiles,
@@ -25,6 +27,8 @@ import * as fs from 'fs';
 import { removeFilesIfExists } from 'src/utils/fileUtils';
 import { Request } from 'express';
 import { OptionalJwtAuthGuard } from 'src/auth/optional-jwt-auth.guard';
+import { MerchantsService } from 'src/merchants/merchants.service';
+import { Payload } from 'src/auth/interfaces/payload.interface';
 
 const UPLOAD_DIR = '../uploads/products/';
 
@@ -51,9 +55,24 @@ function imageFileFilter(req, file, cb) {
     );
 }
 
+function cleanupUploadedFiles(files: {
+  mainImage?: Express.Multer.File[];
+  secondaryImages?: Express.Multer.File[];
+}) {
+  const paths: string[] = [];
+  if (files?.mainImage?.[0]) paths.push(files.mainImage[0].path);
+  if (files?.secondaryImages) {
+    paths.push(...files.secondaryImages.map((f) => f.path));
+  }
+  removeFilesIfExists(paths);
+}
+
 @Controller('products')
 export class ProductsController {
-  constructor(private readonly productsService: ProductsService) {}
+  constructor(
+    private readonly productsService: ProductsService,
+    private readonly merchantService: MerchantsService,
+  ) {}
 
   @Get('homepage')
   async getHomePageProducts() {
@@ -93,14 +112,19 @@ export class ProductsController {
     },
   ) {
     const user = req.user as { id: number; email?: string; role?: string };
-    if (!user || !user.id) {
-      const uploadedPaths: string[] = [];
-      if (files?.mainImage?.[0]) uploadedPaths.push(files.mainImage[0].path);
-      if (files?.secondaryImages)
-        uploadedPaths.push(...files.secondaryImages.map((f) => f.path));
-      removeFilesIfExists(uploadedPaths);
 
+    if (!user || !user.id) {
+      cleanupUploadedFiles(files);
       throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
+    }
+
+    const isMerchantActive = await this.merchantService.isMerchantActive(
+      user.id,
+    );
+
+    if (!isMerchantActive) {
+      cleanupUploadedFiles(files);
+      throw new HttpException('Merchant is not active', HttpStatus.FORBIDDEN);
     }
 
     const mainFile = files?.mainImage?.[0];
@@ -141,7 +165,16 @@ export class ProductsController {
   }
 
   @Get('get-product/:id')
-  async getProduct(@Param('id') id: number) {
+  @UseGuards(OptionalJwtAuthGuard)
+  async getProduct(
+    @Param(
+      'id',
+      new ParseIntPipe({ errorHttpStatusCode: HttpStatus.NOT_ACCEPTABLE }),
+    )
+    id: number,
+    @Req() req: Request,
+  ) {
+    const user = req.user as Payload;
     if (!id) {
       throw new HttpException('Product id is required', HttpStatus.BAD_REQUEST);
     }
@@ -152,8 +185,28 @@ export class ProductsController {
     return resObj(200, 'Product fetched successfully', product);
   }
 
+  @Get('merchant-product/:id')
+  @UseGuards(JwtAuthGuard)
+  async getMerchantProduct(@Param('id') id: number, @Req() req: Request) {
+    const user = req.user as Payload;
+    if (user.role !== 'merchant') {
+      throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
+    }
+    const product = await this.productsService.getMerchantProduct(+id, user.id);
+    if (!product) {
+      throw new HttpException('Product not found', HttpStatus.NOT_FOUND);
+    }
+    return resObj(200, 'Merchant products fetched successfully', product);
+  }
+
   @Get('related-products/:id')
-  async getRelatedProducts(@Param('id') id: number) {
+  async getRelatedProducts(
+    @Param(
+      'id',
+      new ParseIntPipe({ errorHttpStatusCode: HttpStatus.NOT_ACCEPTABLE }),
+    )
+    id: number,
+  ) {
     if (!id) {
       throw new HttpException('Product id is required', HttpStatus.BAD_REQUEST);
     }
@@ -170,7 +223,11 @@ export class ProductsController {
   @Get('category/:id')
   @UseGuards(OptionalJwtAuthGuard)
   async getProductsByCategory(
-    @Param('id', ParseIntPipe) id: number,
+    @Param(
+      'id',
+      new ParseIntPipe({ errorHttpStatusCode: HttpStatus.NOT_ACCEPTABLE }),
+    )
+    id: number,
     @Query('sortByDate') sortByDate: 'asc' | 'desc',
     @Query('page') page: number,
     @Query('limit') limit: number,
@@ -192,5 +249,61 @@ export class ProductsController {
       user?.id,
     );
     return resObj(200, 'Products fetched successfully', products);
+  }
+
+  @Patch('update-offer/:id')
+  @UseGuards(JwtAuthGuard)
+  async updateOfferPrice(
+    @Param('id') id: number,
+    @Query('offerPrice') offerPrice: number,
+    @Req() req: Request,
+  ) {
+    if (!id) {
+      throw new HttpException('Product id is required', HttpStatus.BAD_REQUEST);
+    }
+    const user = req.user as { id: number };
+    await this.productsService.updateOfferPrice(+id, user.id, offerPrice);
+    return resObj(200, 'Product offer price updated successfully');
+  }
+
+  @Patch('update-quantity/:id')
+  @UseGuards(JwtAuthGuard)
+  async updateQuantity(
+    @Param(
+      'id',
+      new ParseIntPipe({ errorHttpStatusCode: HttpStatus.NOT_ACCEPTABLE }),
+    )
+    id: number,
+    @Query(
+      'quantity',
+      new ParseIntPipe({ errorHttpStatusCode: HttpStatus.NOT_ACCEPTABLE }),
+    )
+    quantity: number,
+    @Req() req: Request,
+  ) {
+    if (!id) {
+      throw new HttpException('Product id is required', HttpStatus.BAD_REQUEST);
+    }
+    const user = req.user as { id: number };
+    await this.productsService.updateQuantity(+id, user.id, quantity);
+    return resObj(200, 'Product quantity updated successfully');
+  }
+
+  @Patch('suspend/:id')
+  @UseGuards(JwtAuthGuard)
+  async suspendProduct(
+    @Param(
+      'id',
+      new ParseIntPipe({ errorHttpStatusCode: HttpStatus.NOT_ACCEPTABLE }),
+    )
+    id: number,
+    @Req() req: Request,
+  ) {
+    if (!id) {
+      throw new HttpException('Product id is required', HttpStatus.BAD_REQUEST);
+    }
+    const user = req.user as { id: number };
+    await this.productsService.suspendProduct(+id, user.id);
+    return resObj(200, 'Product suspended successfully');
   }
 }

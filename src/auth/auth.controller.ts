@@ -102,11 +102,11 @@ export class AuthController {
     @Res() res: Response,
   ) {
     const merchant = (req as any).merchant as Payload;
-    const vaildatedMerchant = await this.authService.validateMerchant({
+    const validatedMerchant = await this.authService.validateMerchant({
       email: merchant.email,
       password: body.password,
     });
-    if (!vaildatedMerchant) {
+    if (!validatedMerchant) {
       throw new UnauthorizedException('Invalid credentials');
     }
     const response = await this.authService.merchantLogin(merchant, res);
