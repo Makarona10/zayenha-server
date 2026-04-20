@@ -7,15 +7,14 @@ import {
 import { PrismaService } from 'src/prisma/prisma.service';
 import { ProductAdd } from './types';
 import { Prisma } from '@prisma/client';
-import { WinstonLogger } from 'src/logger/winston.logger';
 import { CategoriesService } from 'src/categories/categories.service';
+import { SearchProductsDto } from './dto/search-products.dto';
 
 @Injectable()
 export class ProductsService {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly categoryService: CategoriesService,
-    private readonly winston: WinstonLogger,
   ) {}
 
   private generateSKU(): string {
@@ -458,6 +457,143 @@ export class ProductsService {
     return product;
   }
 
+  async searchProducts(searchDto: SearchProductsDto, userId: number) {
+    const {
+      query,
+      categoryId,
+      materialId,
+      minPrice,
+      maxPrice,
+      inStock,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+      page = 1,
+      limit = 20,
+    } = searchDto;
+
+    const where: Prisma.ProductWhereInput = {
+      status: 'approved',
+      translations: {
+        some: {
+          OR: [
+            { name: { contains: query, mode: 'insensitive' } },
+            { description: { contains: query, mode: 'insensitive' } },
+          ],
+        },
+      },
+    };
+
+    if (categoryId) {
+      where.categoryId = categoryId;
+    }
+    if (materialId) {
+      where.materialId = materialId;
+    }
+
+    if (minPrice !== undefined || maxPrice !== undefined) {
+      where.AND = [];
+
+      if (minPrice !== undefined) {
+        where.AND.push({
+          OR: [
+            { offerPrice: { gte: minPrice } },
+            {
+              AND: [{ offerPrice: null }, { price: { gte: minPrice } }],
+            },
+          ],
+        });
+      }
+
+      if (maxPrice !== undefined) {
+        where.AND.push({
+          OR: [
+            { offerPrice: { lte: maxPrice } },
+            {
+              AND: [{ offerPrice: null }, { price: { lte: maxPrice } }],
+            },
+          ],
+        });
+      }
+    }
+
+    if (inStock) {
+      where.stockQuantity = { gt: 0 };
+    }
+
+    let orderBy: Prisma.ProductOrderByWithRelationInput = {};
+
+    switch (sortBy) {
+      case 'price':
+        orderBy = { price: sortOrder };
+        break;
+
+      case 'category':
+        orderBy = { categoryId: sortOrder };
+        break;
+
+      case 'createdAt':
+      default:
+        orderBy = { createdAt: sortOrder };
+        break;
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [products, total] = await Promise.all([
+      this.prismaService.product.findMany({
+        where,
+        include: {
+          translations: true,
+          images: {
+            take: 1,
+            orderBy: { id: 'asc' },
+          },
+          material: {
+            select: {
+              id: true,
+              nameInEnglish: true,
+              nameInArabic: true,
+            },
+          },
+          category: {
+            select: {
+              id: true,
+              nameInEnglish: true,
+              nameInArabic: true,
+            },
+          },
+          ...(userId && {
+            wishlistedBy: {
+              where: { userId },
+              select: { userId: true },
+            },
+          }),
+        },
+        orderBy,
+        skip,
+        take: limit,
+      }),
+
+      this.prismaService.product.count({ where }),
+    ]);
+
+    const formattedProducts = products.map((product) => ({
+      ...product,
+      isWishlisted: userId ? product.wishlistedBy?.length > 0 : false,
+      wishlistedBy: undefined,
+    }));
+
+    return {
+      data: formattedProducts,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
   async getMerchantProduct(id: number, merchantId: number) {
     const product = await this.prismaService.product.findUnique({
       where: {
@@ -509,7 +645,7 @@ export class ProductsService {
       take: limit,
     });
 
-    const productsCount = await this.prismaService.product.count({
+    const total = await this.prismaService.product.count({
       where: {
         status: 'approved',
         stockQuantity: { gt: 0 },
@@ -526,7 +662,12 @@ export class ProductsService {
 
     return {
       products,
-      productsCount,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
     };
   }
 

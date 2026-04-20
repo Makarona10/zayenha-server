@@ -12,7 +12,6 @@ import {
   ParseIntPipe,
   Patch,
   Post,
-  Put,
   Query,
   Req,
   UnauthorizedException,
@@ -33,6 +32,8 @@ import { Request } from 'express';
 import { OptionalJwtAuthGuard } from 'src/auth/optional-jwt-auth.guard';
 import { MerchantsService } from 'src/merchants/merchants.service';
 import { Payload } from 'src/auth/interfaces/payload.interface';
+import { MerchantApprovedGuard } from 'src/auth/merchant-approved.guard';
+import { SearchProductsDto } from './dto/search-products.dto';
 
 const UPLOAD_DIR = '../uploads/products/';
 
@@ -79,7 +80,7 @@ export class ProductsController {
   }
 
   @Post('publish')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, MerchantApprovedGuard)
   @UseInterceptors(
     FileFieldsInterceptor(
       [
@@ -184,8 +185,22 @@ export class ProductsController {
     return resObj(200, 'Product fetched successfully', product);
   }
 
+  @Get('search')
+  @UseGuards(OptionalJwtAuthGuard)
+  async searchProducts(
+    @Query() searchProductsDto: SearchProductsDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as Payload;
+    const products = await this.productsService.searchProducts(
+      searchProductsDto,
+      +user.id,
+    );
+    return resObj(200, 'Products fetched successfully', products);
+  }
+
   @Get('merchant-product/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, MerchantApprovedGuard)
   async getMerchantProduct(@Param('id') id: number, @Req() req: Request) {
     const user = req.user as Payload;
     if (user.role !== 'merchant') {
@@ -236,7 +251,7 @@ export class ProductsController {
       throw new BadRequestException('Category id is required');
     }
 
-    const user = req.user as { id: number };
+    const user = req.user as Payload;
     const products = await this.productsService.getProductsByCategory(
       +id,
       sortByDate,
@@ -248,7 +263,7 @@ export class ProductsController {
   }
 
   @Patch('update-offer/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, MerchantApprovedGuard)
   async updateOfferPrice(
     @Param('id') id: number,
     @Query('offerPrice') offerPrice: number,
@@ -263,7 +278,7 @@ export class ProductsController {
   }
 
   @Patch('update-quantity/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, MerchantApprovedGuard)
   async updateQuantity(
     @Param(
       'id',
@@ -286,7 +301,7 @@ export class ProductsController {
   }
 
   @Patch('suspend/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, MerchantApprovedGuard)
   async suspendProduct(
     @Param(
       'id',
