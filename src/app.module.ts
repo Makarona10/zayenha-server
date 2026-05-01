@@ -26,6 +26,9 @@ import { UsersModule } from './users/users.module';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
+import { AddressesService } from './addresses/addresses.service';
+import { AddressesModule } from './addresses/addresses.module';
+import { BullModule } from '@nestjs/bull';
 
 @Module({
   imports: [
@@ -41,6 +44,15 @@ import { APP_GUARD } from '@nestjs/core';
     WishlistsModule,
     PrismaModule,
     UsersModule,
+    BullModule.forRoot({
+      redis: {
+        host: 'localhost',
+        port: 6379,
+      },
+    }),
+    BullModule.registerQueue({
+      name: 'payment-expiry',
+    }),
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env', '.env.development'],
@@ -54,6 +66,7 @@ import { APP_GUARD } from '@nestjs/core';
         },
       ],
     }),
+    AddressesModule,
   ],
   controllers: [
     AppController,
@@ -76,6 +89,7 @@ import { APP_GUARD } from '@nestjs/core';
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
+    AddressesService,
   ],
 })
 export class AppModule {}

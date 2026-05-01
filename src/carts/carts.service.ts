@@ -30,6 +30,24 @@ export class CartsService {
     return `cart:${userId}:${languageCode}`;
   }
 
+  @Cron(CronExpression.EVERY_DAY_AT_7AM)
+  async handleExpiredCarts() {
+    await this.cleanupExpiredCarts();
+  }
+
+  async clearCart(userId: number) {
+    await this.prismaService.cartItem.deleteMany({
+      where: { cart: { userId } },
+    });
+
+    await Promise.all([
+      this.redisService.deleteKey(this.getCartKey(userId, 'en')),
+      this.redisService.deleteKey(this.getCartKey(userId, 'ar')),
+    ]);
+
+    return Promise.resolve();
+  }
+
   async cleanupExpiredCarts(): Promise<void> {
     await this.prismaService.cart.deleteMany({
       where: {
@@ -80,11 +98,6 @@ export class CartsService {
         image: item.product.mainImage,
       })),
     };
-  }
-
-  @Cron(CronExpression.EVERY_DAY_AT_7AM)
-  async handleExpiredCarts() {
-    await this.cleanupExpiredCarts();
   }
 
   async addToCart(
@@ -225,6 +238,61 @@ export class CartsService {
     await this.cacheCart(userId, formattedCart, lang);
 
     return Promise.resolve();
+  }
+
+  async decreaseItemQuantity(userId: number, productId: number) {
+    const result = await this.prismaService.$transaction(async (tx) => {
+      const cartItem = await tx.cartItem.findFirst({
+        where: {
+          productId,
+          cart: { userId },
+        },
+      });
+
+      if (!cartItem) {
+        throw new BadRequestException('Item not found in your cart');
+      }
+
+      if (cartItem.quantity <= 1) {
+        return await tx.cartItem.delete({
+          where: { id: cartItem.id },
+        });
+      } else {
+        return await tx.cartItem.update({
+          where: { id: cartItem.id },
+          data: { quantity: { decrement: 1 } },
+        });
+      }
+    });
+
+    await Promise.all([
+      this.redisService.deleteKey(this.getCartKey(userId, 'en')),
+      this.redisService.deleteKey(this.getCartKey(userId, 'ar')),
+    ]);
+
+    return result;
+  }
+
+  async removeItemFromCart(userId: number, productId: number) {
+    const deleteOp = await this.prismaService.cartItem.deleteMany({
+      where: {
+        productId: productId,
+        cart: {
+          userId: userId,
+        },
+      },
+    });
+
+    if (deleteOp.count === 0) {
+      throw new BadRequestException('Item not found in your cart');
+    }
+
+    await Promise.all([
+      this.redisService.deleteKey(this.getCartKey(userId, 'en')),
+      this.redisService.deleteKey(this.getCartKey(userId, 'ar')),
+    ]);
+
+    return;
   }
 
   async getCart(userId: number, lang: 'en' | 'ar' = 'en') {
