@@ -13,5 +13,6 @@ import { PaymentExpiryProcessor } from './payment.processor';
   ],
   controllers: [OrdersController],
   providers: [OrdersService, PrismaService, PaymentExpiryProcessor],
+  exports: [OrdersService],
 })
 export class OrdersModule {}
