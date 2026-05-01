@@ -11,6 +11,7 @@ import { Payload } from './interfaces/payload.interface';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { MailerService } from '@nestjs-modules/mailer';
 import { MerchantsService } from 'src/merchants/merchants.service';
+import { Admin } from '@prisma/client';
 
 const randomBytesAsync = promisify(randomBytes);
 
@@ -68,6 +69,78 @@ export class AuthService {
     if (!result) return null;
 
     return user;
+  }
+
+  async registerAdmin(data: any) {
+    const { email, password, firstName, lastName } = data;
+
+    const existingAdmin = await this.prismaService.admin.findUnique({
+      where: { email },
+    });
+
+    if (existingAdmin) {
+      throw new BadRequestException('Admin email already registered');
+    }
+
+    const { hash } = await this.hashPassword(password);
+
+    return this.prismaService.admin.create({
+      data: {
+        email,
+        password: hash,
+        firstName,
+        lastName,
+      },
+      select: { id: true, email: true, firstName: true, lastName: true },
+    });
+  }
+
+  async validateAdmin(credential: { email: string; password: string }) {
+    const admin = await this.prismaService.admin.findUnique({
+      where: { email: credential.email },
+    });
+
+    if (!admin) return null;
+
+    const isMatch = await this.verifyPassword(
+      admin.password,
+      credential.password,
+    );
+    if (!isMatch) return null;
+
+    return admin;
+  }
+
+  async adminLogin(admin: Admin, res: Response) {
+    const payload: Payload = {
+      id: admin.id,
+      email: admin.email,
+      role: 'admin',
+    };
+
+    const tokens = await this.generateTokens(payload);
+
+    const hashedRefreshToken = await argon.hash(tokens.refresh_token, {
+      hashLength: 60,
+      type: argon.argon2id,
+      secret: Buffer.from(process.env.JWT_REFRESH_HASH_SECRET, 'base64'),
+    });
+
+    await this.redisService.setValue(
+      `refresh_token:${payload.id}`,
+      hashedRefreshToken,
+      Number(process.env.JWT_REFRESH_EXPIRATION),
+    );
+
+    res.cookie('refresh_token', tokens.refresh_token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/auth/refresh',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    return { access_token: tokens.access_token };
   }
 
   async login(user: Payload, res: Response) {

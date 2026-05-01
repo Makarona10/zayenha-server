@@ -11,14 +11,17 @@ import {
 } from '@nestjs/common';
 import { UsersService } from 'src/users/users.service';
 import { AuthService } from './auth.service';
-import { LocalAuthGuard } from './jwt-local.guard';
-import { JwtAuthGuard } from './jwt-auth.guard';
+import { LocalAuthGuard } from './guards/jwt-local.guard';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { Request, Response } from 'express';
 import { MerchantRegisterDto, RegisterDto } from './dto/register.dto';
 import { Payload } from './interfaces/payload.interface';
 import { resObj } from 'src/utils';
 import { MerchantsService } from 'src/merchants/merchants.service';
 import { Throttle } from '@nestjs/throttler';
+import { AdminRegisterDto } from './dto/admin-register.dto';
+import { LoginDto } from './dto/admin-login.dto';
+import { AdminGuard } from './guards/admin.guard';
 
 @Throttle({ default: { ttl: 60000, limit: 10 } })
 @Controller('auth')
@@ -28,6 +31,26 @@ export class AuthController {
     private readonly merchantService: MerchantsService,
     private readonly authService: AuthService,
   ) {}
+
+  // @Post('admin/register')
+  // // @UseGuards(JwtAuthGuard, AdminGuard)
+  // async registerAdmin(@Body() body: AdminRegisterDto) {
+  //   const result = await this.authService.registerAdmin(body);
+  //   return { statusCode: 201, message: 'Admin registered', data: result };
+  // }
+
+  @Post('admin/login')
+  async loginAdmin(
+    @Body() body: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const admin = await this.authService.validateAdmin(body);
+    if (!admin) {
+      throw new UnauthorizedException('Invalid admin credentials');
+    }
+    const accessToken = await this.authService.adminLogin(admin, res);
+    return resObj(200, 'Admin login successfully', accessToken);
+  }
 
   @Post('register')
   async register(@Body() body: RegisterDto) {

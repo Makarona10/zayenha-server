@@ -5,7 +5,7 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { Payload } from './interfaces/payload.interface';
+import { Payload } from '../interfaces/payload.interface';
 
 @Injectable()
 export class MerchantApprovedGuard implements CanActivate {
