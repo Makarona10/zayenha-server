@@ -5,10 +5,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { ProductAdd } from './types';
 import { Prisma } from '@prisma/client';
 import { CategoriesService } from 'src/categories/categories.service';
 import { SearchProductsDto } from './dto/search-products.dto';
+import { ProductAdd } from './dto/publish-product.dto';
 
 @Injectable()
 export class ProductsService {
@@ -38,148 +38,163 @@ export class ProductsService {
     secondaryImagePaths: string[],
     userId: number,
   ) {
-    return this.prismaService
-      .$transaction(async (tx) => {
-        const merchant = await tx.merchant.findUnique({
-          where: { id: userId },
-        });
-        if (!merchant) {
-          throw new BadRequestException('Merchant account not found');
-        }
-
-        const category = await tx.category.findUnique({
-          where: { id: productData.categories[0] },
-        });
-        if (!category) {
-          throw new BadRequestException('Category not found');
-        }
-
-        if (productData.materialId) {
-          const material = await tx.material.findUnique({
-            where: { id: productData.materialId },
-          });
-          if (!material) {
-            throw new BadRequestException('Material not found');
-          }
-        }
-
-        const product = await tx.product.create({
-          data: {
-            merchantId: merchant.id,
-            categoryId: productData.categories[0],
-            price: new Prisma.Decimal(productData.price),
-            offerPrice: productData.offerPrice
-              ? new Prisma.Decimal(productData.offerPrice)
-              : undefined,
-            stockQuantity: productData.stockQuantity,
-            mainImage: mainImagePath,
-            sku: this.generateSKU(),
-            status: 'pending',
-            materialId: productData.materialId ?? null,
-          },
-        });
-
-        await tx.productTranslation.createMany({
-          data: [
-            {
-              productId: product.id,
-              languageCode: 'ar',
-              name: productData.nameInArabic,
-              shortDescription: productData.shortDescriptionInArabic,
-              description: productData.descriptionInArabic,
-            },
-            {
-              productId: product.id,
-              languageCode: 'en',
-              name: productData.nameInEnglish,
-              shortDescription: productData.shortDescriptionInEnglish,
-              description: productData.descriptionInEnglish,
-            },
-          ],
-        });
-
-        if (
-          typeof productData.attributes !== 'undefined' &&
-          productData.attributes.length > 0
-        )
-          await tx.productAttribute.createMany({
-            data: productData.attributes.map((attr) => ({
-              productId: product.id,
-              nameInArabic: attr.nameInArabic,
-              nameInEnglish: attr.nameInEnglish,
-              valueInArabic: attr.valueInArabic,
-              valueInEnglish: attr.valueInEnglish,
-            })),
-          });
-
-        if (secondaryImagePaths && secondaryImagePaths.length > 0) {
-          const imagesData = secondaryImagePaths.map((p) => ({
-            productId: product.id,
-            image: p,
-          }));
-          await tx.productImage.createMany({ data: imagesData });
-        }
-
-        await tx.productCategory.create({
-          data: {
-            productId: product.id,
-            categoryId: productData.categories[0],
-          },
-        });
-
-        const created = await tx.product.findUnique({
-          where: { id: product.id },
-          include: {
-            translations: true,
-            images: true,
-            material: true,
-            categories: { include: { category: true } },
-          },
-        });
-
-        return created;
-      })
-      .catch((err) => {
-        throw err;
+    return this.prismaService.$transaction(async (tx) => {
+      const merchant = await tx.merchant.findUnique({
+        where: { id: userId },
       });
+      if (!merchant)
+        throw new BadRequestException('Merchant account not found');
+
+      const category = await tx.category.findUnique({
+        where: { id: productData.categories[0] },
+      });
+      if (!category)
+        throw new BadRequestException('Primary category not found');
+
+      if (productData.materialId) {
+        const material = await tx.material.findUnique({
+          where: { id: productData.materialId },
+        });
+        if (!material) throw new BadRequestException('Material not found');
+      }
+
+      const product = await tx.product.create({
+        data: {
+          merchantId: merchant.id,
+          categoryId: productData.categories[0],
+          price: new Prisma.Decimal(productData.price),
+          offerPrice: productData.offerPrice
+            ? new Prisma.Decimal(productData.offerPrice)
+            : null,
+          stockQuantity: productData.stockQuantity,
+          mainImage: mainImagePath,
+          sku: this.generateSKU(),
+          status: 'pending',
+          materialId: productData.materialId ?? null,
+        },
+      });
+
+      await tx.productTranslation.createMany({
+        data: [
+          {
+            productId: product.id,
+            languageCode: 'ar',
+            name: productData.nameInArabic,
+            shortDescription: productData.shortDescriptionInArabic,
+            description: productData.descriptionInArabic,
+          },
+          {
+            productId: product.id,
+            languageCode: 'en',
+            name: productData.nameInEnglish,
+            shortDescription: productData.shortDescriptionInEnglish,
+            description: productData.descriptionInEnglish,
+          },
+        ],
+      });
+
+      if (productData.attributes && productData.attributes.length > 0) {
+        const attributeData = [];
+        productData.attributes.forEach((attr) => {
+          attributeData.push({
+            productId: product.id,
+            name: attr.nameInEnglish,
+            value: attr.valueInEnglish,
+            languageCode: 'en',
+          });
+          attributeData.push({
+            productId: product.id,
+            name: attr.nameInArabic,
+            value: attr.valueInArabic,
+            languageCode: 'ar',
+          });
+        });
+
+        await tx.productAttribute.createMany({ data: attributeData });
+      }
+
+      if (secondaryImagePaths && secondaryImagePaths.length > 0) {
+        await tx.productImage.createMany({
+          data: secondaryImagePaths.map((path) => ({
+            productId: product.id,
+            image: path,
+          })),
+        });
+      }
+
+      if (productData.categories && productData.categories.length > 0) {
+        await tx.productCategory.createMany({
+          data: productData.categories.map((catId) => ({
+            productId: product.id,
+            categoryId: catId,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
+      return tx.product.findUnique({
+        where: { id: product.id },
+        include: {
+          translations: true,
+          images: true,
+          material: true,
+          categories: { include: { category: true } },
+          ProductAttributes: true,
+        },
+      });
+    });
   }
 
-  //For testing
   async getProducts() {
     return this.prismaService.product.findMany();
   }
 
-  async getRelatedProducts(productId: number) {
+  private readonly relatedProductInclude = (lang: string) => ({
+    translations: {
+      where: { languageCode: lang },
+    },
+    images: {
+      take: 1,
+      orderBy: { id: 'asc' as const },
+    },
+    material: {
+      include: {
+        MeterialTranslation: {
+          where: { languageCode: lang },
+        },
+      },
+    },
+    category: {
+      include: {
+        CategoryTranslation: {
+          where: { languageCode: lang },
+        },
+      },
+    },
+  });
+
+  async getRelatedProducts(productId: number, lang: string = 'en') {
     const currentProduct = await this.prismaService.product.findUnique({
       where: {
         id: productId,
         status: 'approved',
         stockQuantity: { gt: 0 },
-        merchant: {
-          status: 'approved',
-        },
+        merchant: { status: 'approved' },
       },
-      select: {
-        id: true,
-        price: true,
-        categoryId: true,
-        merchantId: true,
-      },
+      select: { id: true, price: true, categoryId: true, merchantId: true },
     });
 
-    if (!currentProduct) {
-      throw new NotFoundException('Product not found');
-    }
+    if (!currentProduct) throw new NotFoundException('Product not found');
 
-    const priceMin = +currentProduct.price * 0.8;
-    const priceMax = +currentProduct.price * 1.2;
+    const priceMin = Number(currentProduct.price) * 0.8;
+    const priceMax = Number(currentProduct.price) * 1.2;
 
     const [newProducts, bestSellers, sameCategory, sameMerchant] =
       await Promise.all([
-        this.getNewProducts(productId, priceMin, priceMax, 3),
-        this.getBestSellers(productId, priceMin, priceMax, 3),
-        this.getSameCategory(productId, currentProduct.categoryId, 3),
-        this.getSameMerchant(productId, currentProduct.merchantId, 3),
+        this.getNewProducts(productId, priceMin, priceMax, 3, lang),
+        this.getBestSellers(productId, priceMin, priceMax, 3, lang),
+        this.getSameCategory(productId, currentProduct.categoryId, 3, lang),
+        this.getSameMerchant(productId, currentProduct.merchantId, 3, lang),
       ]);
 
     const allProducts = [
@@ -188,252 +203,129 @@ export class ProductsService {
       ...sameCategory,
       ...sameMerchant,
     ];
-
-    const uniqueProducts = this.removeDuplicates(allProducts);
+    let uniqueProducts = this.removeDuplicates(allProducts);
 
     if (uniqueProducts.length < 12) {
       const needed = 12 - uniqueProducts.length;
       const existingIds = uniqueProducts.map((p) => p.id);
-
-      const fillerProducts = await this.getFillerProducts(
+      const filler = await this.getFillerProducts(
         productId,
         existingIds,
         needed,
+        lang,
       );
-
-      uniqueProducts.push(...fillerProducts);
+      uniqueProducts = [...uniqueProducts, ...filler];
     }
 
     return uniqueProducts.slice(0, 12);
   }
 
   private async getNewProducts(
-    excludeProductId: number,
-    priceMin: number,
-    priceMax: number,
+    excludeId: number,
+    min: number,
+    max: number,
     limit: number,
+    lang: string,
   ) {
     return this.prismaService.product.findMany({
       where: {
-        id: { not: excludeProductId },
+        id: { not: excludeId },
         status: 'approved',
         stockQuantity: { gt: 0 },
-        OR: [
-          { price: { gte: priceMin, lte: priceMax } },
-          { offerPrice: { gte: priceMin, lte: priceMax } },
-        ],
+        price: { gte: min, lte: max },
       },
-      include: {
-        translations: true,
-        images: {
-          take: 1,
-          orderBy: { id: 'asc' },
-        },
-        material: {
-          select: {
-            id: true,
-            nameInEnglish: true,
-            nameInArabic: true,
-          },
-        },
-        category: {
-          select: {
-            id: true,
-            nameInEnglish: true,
-            nameInArabic: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
+      include: this.relatedProductInclude(lang),
+      orderBy: { createdAt: 'desc' },
       take: limit,
     });
   }
 
   private async getBestSellers(
-    excludeProductId: number,
-    priceMin: number,
-    priceMax: number,
+    excludeId: number,
+    min: number,
+    max: number,
     limit: number,
+    lang: string,
   ) {
     return this.prismaService.product.findMany({
       where: {
-        id: { not: excludeProductId },
-        // status: 'approved',
+        id: { not: excludeId },
+        status: 'approved',
         stockQuantity: { gt: 0 },
-        price: { gte: priceMin, lte: priceMax },
+        price: { gte: min, lte: max },
       },
       include: {
-        translations: true,
-        images: {
-          take: 1,
-          orderBy: { id: 'asc' },
-        },
-        material: {
-          select: {
-            id: true,
-            nameInEnglish: true,
-            nameInArabic: true,
-          },
-        },
-        category: {
-          select: {
-            id: true,
-            nameInEnglish: true,
-            nameInArabic: true,
-          },
-        },
-        _count: {
-          select: {
-            orderItems: true,
-          },
-        },
+        ...this.relatedProductInclude(lang),
+        _count: { select: { orderItems: true } },
       },
-      orderBy: {
-        orderItems: {
-          _count: 'desc',
-        },
-      },
+      orderBy: { orderItems: { _count: 'desc' } },
       take: limit,
     });
   }
 
   private async getSameCategory(
-    excludeProductId: number,
+    excludeId: number,
     categoryId: number | null,
     limit: number,
+    lang: string,
   ) {
-    if (!categoryId) {
-      return [];
-    }
-
+    if (!categoryId) return [];
     return this.prismaService.product.findMany({
       where: {
-        id: { not: excludeProductId },
+        id: { not: excludeId },
         status: 'approved',
         stockQuantity: { gt: 0 },
         OR: [{ categoryId }, { categories: { some: { categoryId } } }],
       },
-      include: {
-        translations: true,
-        images: {
-          take: 1,
-          orderBy: { id: 'asc' },
-        },
-        material: {
-          select: {
-            id: true,
-            nameInEnglish: true,
-            nameInArabic: true,
-          },
-        },
-        category: {
-          select: {
-            id: true,
-            nameInEnglish: true,
-            nameInArabic: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
+      include: this.relatedProductInclude(lang),
+      orderBy: { createdAt: 'desc' },
       take: limit,
     });
   }
 
   private async getSameMerchant(
-    excludeProductId: number,
+    excludeId: number,
     merchantId: number,
     limit: number,
+    lang: string,
   ) {
     return this.prismaService.product.findMany({
       where: {
-        id: { not: excludeProductId },
+        id: { not: excludeId },
         merchantId,
-        // status: 'approved',
+        status: 'approved',
         stockQuantity: { gt: 0 },
       },
-      include: {
-        translations: true,
-        images: {
-          take: 1,
-          orderBy: { id: 'asc' },
-        },
-        material: {
-          select: {
-            id: true,
-            nameInEnglish: true,
-            nameInArabic: true,
-          },
-        },
-        category: {
-          select: {
-            id: true,
-            nameInEnglish: true,
-            nameInArabic: true,
-          },
-        },
-      },
-      orderBy: {
-        orderItems: {
-          _count: 'desc',
-        },
-      },
+      include: this.relatedProductInclude(lang),
+      orderBy: { orderItems: { _count: 'desc' } },
       take: limit,
     });
   }
 
   private async getFillerProducts(
-    excludeProductId: number,
+    excludeId: number,
     excludeIds: number[],
     limit: number,
+    lang: string,
   ) {
     return this.prismaService.product.findMany({
       where: {
-        id: {
-          notIn: [excludeProductId, ...excludeIds],
-        },
+        id: { notIn: [excludeId, ...excludeIds] },
         status: 'approved',
         stockQuantity: { gt: 0 },
       },
-      include: {
-        translations: true,
-        images: {
-          take: 1,
-          orderBy: { id: 'asc' },
-        },
-        material: {
-          select: {
-            id: true,
-            nameInEnglish: true,
-            nameInArabic: true,
-          },
-        },
-        category: {
-          select: {
-            id: true,
-            nameInEnglish: true,
-            nameInArabic: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
+      include: this.relatedProductInclude(lang),
+      orderBy: { createdAt: 'desc' },
       take: limit,
     });
   }
 
   private removeDuplicates(products: any[]) {
-    const seen = new Set<number>();
-    return products.filter((product) => {
-      if (seen.has(product.id)) {
-        return false;
-      }
-      seen.add(product.id);
-      return true;
+    const seen = new Set();
+    return products.filter((p) => {
+      const duplicate = seen.has(p.id);
+      seen.add(p.id);
+      return !duplicate;
     });
   }
 
@@ -457,7 +349,11 @@ export class ProductsService {
     return product;
   }
 
-  async searchProducts(searchDto: SearchProductsDto, userId: number) {
+  async searchProducts(
+    searchDto: SearchProductsDto,
+    userId: number,
+    lang: string = 'en',
+  ) {
     const {
       query,
       categoryId,
@@ -473,64 +369,58 @@ export class ProductsService {
 
     const where: Prisma.ProductWhereInput = {
       status: 'approved',
-      translations: {
+      merchant: { status: 'approved' },
+    };
+
+    if (query) {
+      where.translations = {
         some: {
+          languageCode: lang,
           OR: [
             { name: { contains: query, mode: 'insensitive' } },
             { description: { contains: query, mode: 'insensitive' } },
+            { shortDescription: { contains: query, mode: 'insensitive' } },
           ],
         },
-      },
-    };
+      };
+    }
 
-    if (categoryId) {
-      where.categoryId = categoryId;
-    }
-    if (materialId) {
-      where.materialId = materialId;
-    }
+    if (categoryId) where.categoryId = categoryId;
+    if (materialId) where.materialId = materialId;
+    if (inStock) where.stockQuantity = { gt: 0 };
 
     if (minPrice !== undefined || maxPrice !== undefined) {
-      where.AND = [];
-
-      if (minPrice !== undefined) {
-        where.AND.push({
+      where.AND = [
+        {
           OR: [
-            { offerPrice: { gte: minPrice } },
             {
-              AND: [{ offerPrice: null }, { price: { gte: minPrice } }],
+              offerPrice: {
+                not: null,
+                ...(minPrice && { gte: new Prisma.Decimal(minPrice) }),
+                ...(maxPrice && { lte: new Prisma.Decimal(maxPrice) }),
+              },
+            },
+            {
+              AND: [
+                { offerPrice: null },
+                {
+                  price: {
+                    ...(minPrice && { gte: new Prisma.Decimal(minPrice) }),
+                    ...(maxPrice && { lte: new Prisma.Decimal(maxPrice) }),
+                  },
+                },
+              ],
             },
           ],
-        });
-      }
-
-      if (maxPrice !== undefined) {
-        where.AND.push({
-          OR: [
-            { offerPrice: { lte: maxPrice } },
-            {
-              AND: [{ offerPrice: null }, { price: { lte: maxPrice } }],
-            },
-          ],
-        });
-      }
-    }
-
-    if (inStock) {
-      where.stockQuantity = { gt: 0 };
+        },
+      ];
     }
 
     let orderBy: Prisma.ProductOrderByWithRelationInput = {};
-
     switch (sortBy) {
       case 'price':
         orderBy = { price: sortOrder };
         break;
-
-      case 'category':
-        orderBy = { categoryId: sortOrder };
-        break;
-
       case 'createdAt':
       default:
         orderBy = { createdAt: sortOrder };
@@ -543,23 +433,19 @@ export class ProductsService {
       this.prismaService.product.findMany({
         where,
         include: {
-          translations: true,
+          translations: { where: { languageCode: lang } },
           images: {
             take: 1,
             orderBy: { id: 'asc' },
           },
           material: {
-            select: {
-              id: true,
-              nameInEnglish: true,
-              nameInArabic: true,
+            include: {
+              MeterialTranslation: { where: { languageCode: lang } },
             },
           },
           category: {
-            select: {
-              id: true,
-              nameInEnglish: true,
-              nameInArabic: true,
+            include: {
+              CategoryTranslation: { where: { languageCode: lang } },
             },
           },
           ...(userId && {
@@ -573,18 +459,22 @@ export class ProductsService {
         skip,
         take: limit,
       }),
-
       this.prismaService.product.count({ where }),
     ]);
 
-    const formattedProducts = products.map((product) => ({
+    const formattedData = products.map((product) => ({
       ...product,
-      isWishlisted: userId ? product.wishlistedBy?.length > 0 : false,
+      isWishlisted: !!(userId && product.wishlistedBy?.length > 0),
+      name: product.translations[0]?.name || '',
+      description: product.translations[0]?.description || '',
+      categoryName: product.category?.CategoryTranslation[0]?.name || '',
+      materialName: product.material?.MeterialTranslation[0]?.name || '',
       wishlistedBy: undefined,
+      translations: undefined,
     }));
 
     return {
-      data: formattedProducts,
+      data: formattedData,
       meta: {
         total,
         page,

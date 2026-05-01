@@ -52,11 +52,10 @@ export class CategoriesController {
       if (!file) {
         throw new BadRequestException('Image file is required');
       }
-      const insertedCtg = await this.categoriesService.insertCategory(
-        body.nameInArabic,
-        body.nameInEnglish,
-        file.filename,
-      );
+      const insertedCtg = await this.categoriesService.insertCategory({
+        ...body,
+        image: file.filename,
+      });
       return resObj(201, 'Category created successfully', insertedCtg);
     } catch (error) {
       if (

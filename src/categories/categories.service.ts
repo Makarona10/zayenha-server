@@ -1,5 +1,6 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { CategoryDto } from './dto/category.dto';
 
 @Injectable()
 export class CategoriesService {
@@ -9,17 +10,32 @@ export class CategoriesService {
     return this.prismaService.category.findMany();
   }
 
-  async insertCategory(
-    nameInArabic: string,
-    nameInEnglish: string,
-    image: string,
-  ) {
-    return this.prismaService.category.create({
-      data: {
-        nameInArabic,
-        nameInEnglish,
-        image,
-      },
+  async insertCategory(category: CategoryDto) {
+    const { image, parentCategoryId, translations } = category;
+
+    return this.prismaService.$transaction(async (tx) => {
+      const category = await tx.category.create({
+        data: {
+          image,
+          CategoryTranslation: {
+            create: translations.map((t) => ({
+              name: t.name,
+              languageCode: t.languageCode,
+            })),
+          },
+        },
+      });
+
+      if (parentCategoryId) {
+        await tx.categoryParent.create({
+          data: {
+            parentId: parentCategoryId,
+            childId: category.id,
+          },
+        });
+      }
+
+      return category;
     });
   }
 

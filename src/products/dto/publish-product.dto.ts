@@ -1,118 +1,83 @@
 import {
-  IsNotEmpty,
   IsString,
-  MaxLength,
-  MinLength,
+  IsNumber,
   IsOptional,
   IsArray,
+  IsNotEmpty,
   ValidateNested,
-  IsInt,
   Min,
-  IsNumber,
-  IsPositive,
+  IsInt,
 } from 'class-validator';
-import { Type, Transform } from 'class-transformer';
+import { Type } from 'class-transformer';
 
 export class ProductAttributeDto {
   @IsString()
   @IsNotEmpty()
-  @MaxLength(100)
-  nameInEnglish: string;
-
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(100)
   nameInArabic: string;
 
   @IsString()
   @IsNotEmpty()
-  @MaxLength(255)
-  valueInEnglish: string;
+  nameInEnglish: string;
 
   @IsString()
   @IsNotEmpty()
-  @MaxLength(255)
   valueInArabic: string;
+
+  @IsString()
+  @IsNotEmpty()
+  valueInEnglish: string;
 }
 
-export class ProductDto {
+export class ProductAdd {
   @IsString()
   @IsNotEmpty()
-  @MinLength(1)
-  @MaxLength(255)
   nameInArabic: string;
 
   @IsString()
   @IsNotEmpty()
-  @MinLength(1)
-  @MaxLength(255)
   nameInEnglish: string;
 
-  @IsInt()
-  @IsPositive()
-  @IsNotEmpty()
-  @Type(() => Number)
+  @IsString()
+  @IsOptional()
+  shortDescriptionInArabic?: string;
+
+  @IsString()
+  @IsOptional()
+  shortDescriptionInEnglish?: string;
+
+  @IsString()
+  @IsOptional()
+  descriptionInArabic?: string;
+
+  @IsString()
+  @IsOptional()
+  descriptionInEnglish?: string;
+
+  @IsNumber()
+  @Min(0)
   price: number;
 
-  @IsInt()
-  @IsPositive()
-  @Type(() => Number)
+  @IsNumber()
   @IsOptional()
+  @Min(0)
   offerPrice?: number;
-
-  @IsString()
-  @IsNotEmpty()
-  descriptionInArabic: string;
-
-  @IsString()
-  @IsNotEmpty()
-  descriptionInEnglish: string;
-
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(255)
-  shortDescriptionInArabic: string;
-
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(255)
-  shortDescriptionInEnglish: string;
-
-  @IsString()
-  @IsNotEmpty()
-  @MinLength(1)
-  @MaxLength(50)
-  sku: string;
 
   @IsInt()
   @Min(0)
-  @IsNotEmpty()
-  @Type(() => Number)
   stockQuantity: number;
-
-  @IsInt()
-  @IsOptional()
-  @Type(() => Number)
-  materialId?: number;
 
   @IsArray()
   @IsInt({ each: true })
+  @IsNotEmpty()
+  categories: number[]; // Array of IDs, [0] is the main category
+
+  @IsInt()
   @IsOptional()
-  @Transform(({ value }) => {
-    if (!value) return [];
-    if (typeof value === 'string') return JSON.parse(value);
-    return value;
-  })
-  categories: number[];
+  materialId?: number;
 
   @IsArray()
   @ValidateNested({ each: true })
-  @IsOptional()
   @Type(() => ProductAttributeDto)
-  @Transform(({ value }) => {
-    if (!value) return [];
-    if (typeof value === 'string') return JSON.parse(value);
-    return value;
-  })
+  @IsOptional()
   attributes?: ProductAttributeDto[];
 }

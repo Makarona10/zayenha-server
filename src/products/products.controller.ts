@@ -19,9 +19,8 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { ProductsService } from './products.service';
-import { ProductDto } from './dto/publish-product.dto';
 import { resObj } from 'src/utils';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -29,11 +28,12 @@ import { extname } from 'path';
 import * as fs from 'fs';
 import { removeFilesIfExists } from 'src/utils/fileUtils';
 import { Request } from 'express';
-import { OptionalJwtAuthGuard } from 'src/auth/optional-jwt-auth.guard';
+import { OptionalJwtAuthGuard } from 'src/auth/guards/optional-jwt-auth.guard';
 import { MerchantsService } from 'src/merchants/merchants.service';
 import { Payload } from 'src/auth/interfaces/payload.interface';
-import { MerchantApprovedGuard } from 'src/auth/merchant-approved.guard';
+import { MerchantApprovedGuard } from 'src/auth/guards/merchant-approved.guard';
 import { SearchProductsDto } from './dto/search-products.dto';
+import { ProductAdd } from './dto/publish-product.dto';
 
 const UPLOAD_DIR = '../uploads/products/';
 
@@ -104,7 +104,7 @@ export class ProductsController {
   )
   async publishProduct(
     @Req() req: any,
-    @Body() productData: ProductDto,
+    @Body() productData: ProductAdd,
     @UploadedFiles()
     files: {
       mainImage?: Express.Multer.File[];
