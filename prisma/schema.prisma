@@ -24,6 +24,7 @@ enum ProductStatus {
   pending
   approved
   rejected
+  suspended
 }
 
 enum OrderStatus {
@@ -35,7 +36,7 @@ enum OrderStatus {
 }
 
 enum PaymentMethod {
-  stripe
+  online
   cod
 }
 
@@ -81,6 +82,9 @@ model User {
   wishlist             Wishlist[]
   PasswordReset        PasswordReset?
   cancellationRequests CancellationRequest[]
+
+  @@index([status])
+  @@index([email])
 }
 
 model PasswordReset {
@@ -93,43 +97,55 @@ model PasswordReset {
 model Address {
   id        Int      @id @default(autoincrement())
   userId    Int
-  city      String?  @db.VarChar(64)
-  district  String?  @db.VarChar(64)
-  street    String?  @db.VarChar(64)
+  city      String   @db.VarChar(64)
+  district  String   @db.VarChar(64)
+  street    String   @db.VarChar(64)
   building  String?  @db.VarChar(64)
   details   String?  @db.VarChar(512)
   createdAt DateTime @default(now())
 
-  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  orders Order[]
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Merchant {
-  id          Int            @id @default(autoincrement())
-  name        String         @db.VarChar(255)
-  email       String         @unique @db.VarChar(150)
-  password    String         @db.VarChar(255)
-  phoneNumber String         @unique @db.VarChar(20)
-  address     String         @db.VarChar(512)
-  status      MerchantStatus @default(pending)
-  deletedAt   DateTime?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id           Int            @id @default(autoincrement())
+  name         String         @db.VarChar(255)
+  businessName String         @default("") @db.VarChar(255)
+  email        String         @unique @db.VarChar(150)
+  password     String         @db.VarChar(255)
+  phoneNumber  String         @unique @db.VarChar(20)
+  address      String         @db.VarChar(512)
+  status       MerchantStatus @default(pending)
+  deletedAt    DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
   products Product[]
+
+  @@index([status])
 }
 
 model Category {
-  id            Int      @id @default(autoincrement())
-  nameInArabic  String   @db.VarChar(255)
-  nameInEnglish String   @db.VarChar(255)
-  createdAt     DateTime @default(now())
-  image         String   @db.Text
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  image     String   @db.Text
 
-  productsMain Product[]         @relation("ProductMainCategory")
-  productLinks ProductCategory[]
-  parentLinks  CategoryParent[]  @relation("CategoryParent_parent")
-  childLinks   CategoryParent[]  @relation("CategoryParent_child")
+  productsMain        Product[]             @relation("ProductMainCategory")
+  productLinks        ProductCategory[]
+  parentLinks         CategoryParent[]      @relation("CategoryParent_parent")
+  childLinks          CategoryParent[]      @relation("CategoryParent_child")
+  CategoryTranslation CategoryTranslation[]
+}
+
+model CategoryTranslation {
+  categoryId   Int
+  languageCode String @db.VarChar(5)
+  name         String @db.VarChar(255)
+
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([name, languageCode])
+  @@index([languageCode, name])
 }
 
 model CategoryParent {
@@ -167,7 +183,7 @@ model Product {
   material          Material?            @relation(fields: [materialId], references: [id], onDelete: SetNull)
   ProductAttributes ProductAttribute[]
 
-  @@index([merchantId])
+  @@index([status])
 }
 
 model ProductTranslation {
@@ -180,19 +196,20 @@ model ProductTranslation {
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@id([productId, languageCode])
+  @@index([name])
 }
 
 model ProductAttribute {
-  id             Int    @id @default(autoincrement())
-  productId      Int
-  nameInEnglish  String @db.VarChar(255)
-  nameInArabic   String @db.VarChar(255)
-  valueInEnglish String @db.VarChar(255)
-  valueInArabic  String @db.VarChar(255)
+  id           Int      @id @default(autoincrement())
+  productId    Int
+  name         String   @db.VarChar(255)
+  value        String   @db.VarChar(255)
+  languageCode String   @db.VarChar(5)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  @@unique([productId, nameInEnglish])
   @@index([productId])
 }
 
@@ -217,26 +234,34 @@ model ProductImage {
 }
 
 model Material {
-  id            Int       @id @default(autoincrement())
-  nameInArabic  String    @unique @db.VarChar(100)
-  nameInEnglish String    @unique @db.VarChar(100)
-  createdAt     DateTime  @default(now())
-  product       Product[]
+  id                  Int                   @id @default(autoincrement())
+  createdAt           DateTime              @default(now())
+  product             Product[]
+  MeterialTranslation MeterialTranslation[]
+}
+
+model MeterialTranslation {
+  materialId   Int
+  languageCode String @db.VarChar(5)
+  name         String @db.VarChar(255)
+
+  material Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@id([materialId, languageCode])
 }
 
 model Order {
   id               Int           @id @default(autoincrement())
   userId           Int
-  addressId        Int?
   totalAmount      Decimal       @db.Decimal(10, 2)
   status           OrderStatus   @default(confirmed)
   paymentMethod    PaymentMethod
   paymentExpiresAt DateTime?
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
+  address          String        @db.Text
 
   user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  address      Address?             @relation(fields: [addressId], references: [id], onDelete: SetNull)
   items        OrderItem[]
   transaction  Transaction[]
   cancellation CancellationRequest?
