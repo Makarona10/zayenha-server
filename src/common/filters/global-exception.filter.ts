@@ -6,7 +6,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
-import { Request, Response } from 'express';
+import { FastifyReply, FastifyRequest } from 'fastify';
 import { Prisma } from '@prisma/client';
 
 @Catch()
@@ -15,8 +15,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
-    const response = ctx.getResponse<Response>();
-    const request = ctx.getRequest<Request>();
+    const response = ctx.getResponse<FastifyReply | any>();
+    const request = ctx.getRequest<FastifyRequest>();
 
     let status: number;
     let message: string | string[];
@@ -72,7 +72,18 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       );
     }
 
-    response.status(status).json(errorResponse);
+    if (typeof response.code === 'function') {
+      return response.code(status).send(errorResponse);
+    }
+
+    if (typeof response.status === 'function') {
+      return response.status(status).send(errorResponse);
+    }
+
+    const rawResponse = response.raw || response;
+    rawResponse.statusCode = status;
+    rawResponse.setHeader('Content-Type', 'application/json');
+    return rawResponse.end(JSON.stringify(errorResponse));
   }
 
   private handlePrismaError(exception: Prisma.PrismaClientKnownRequestError): {

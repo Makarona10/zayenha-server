@@ -9,11 +9,9 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { RedisService } from 'src/common/services/redis.service';
-import { RefreshTokenRateLimitMiddleware } from 'src/common/middlewares/rate-limit.middleware';
 import { PassportModule } from '@nestjs/passport';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { MerchantsService } from 'src/merchants/merchants.service';
-import { MerchantIdMiddleware } from './middlewares/merchant-validate.middleware';
 import { OptionalJwtStrategy } from './strategies/optional-jwt.strategy';
 
 @Module({
@@ -62,9 +60,4 @@ import { OptionalJwtStrategy } from './strategies/optional-jwt.strategy';
   ],
   controllers: [AuthController],
 })
-export class AuthModule implements NestModule {
-  configure(consumer: MiddlewareConsumer) {
-    consumer.apply(MerchantIdMiddleware).forRoutes('auth/merchant/login');
-    consumer.apply(RefreshTokenRateLimitMiddleware).forRoutes('auth/refresh');
-  }
-}
+export class AuthModule {}

@@ -24,7 +24,7 @@ import { resObj } from 'src/utils';
 export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 
-  @Get('/')
+  @Get()
   async listCategories() {
     const ctgs = await this.categoriesService.listCategories();
     return resObj(200, 'Categories fetched successfully', ctgs);

@@ -1,42 +1,25 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from 'src/prisma/prisma.service';
-
-interface AddressInterface {
-  city: string;
-  district: string;
-  street: string;
-  building?: string;
-  details?: string;
-}
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class AddressesService {
-  constructor(private readonly prismaService: PrismaService) {}
+  constructor(private prismaService: PrismaService) {}
 
-  async getAddresses(userId: number) {
-    return this.prismaService.address.findMany({
-      where: { userId },
-    });
-  }
-
-  async getAdress(userId: number, addressId: number) {
-    return this.prismaService.address.findFirst({
-      where: { userId, id: addressId },
-    });
-  }
-
-  async saveAddress(userId: number, address: AddressInterface) {
-    return this.prismaService.address.create({
+  async createUserAddress(
+    userId: number,
+    data: {
+      city: string;
+      district: string;
+      street: string;
+      building?: string;
+      details?: string;
+    },
+  ) {
+    return await this.prismaService.address.create({
       data: {
-        userId,
-        ...address,
+        ...data,
+        userId: userId,
       },
     });
-  }
-
-  stringifyAddress(address: AddressInterface) {
-    return `${address.city}, ${address.district}, ${address.street}, ${
-      address.building ?? ''
-    }, ${address.details ?? ''}`;
   }
 }

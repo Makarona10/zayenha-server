@@ -6,12 +6,12 @@ import { randomBytes, randomInt } from 'node:crypto';
 import { promisify } from 'node:util';
 import { UsersService } from 'src/users/users.service';
 import * as argon from 'argon2';
-import { Response } from 'express';
 import { Payload } from './interfaces/payload.interface';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { MailerService } from '@nestjs-modules/mailer';
 import { MerchantsService } from 'src/merchants/merchants.service';
 import { Admin } from '@prisma/client';
+import { FastifyReply } from 'fastify';
 
 const randomBytesAsync = promisify(randomBytes);
 
@@ -111,7 +111,7 @@ export class AuthService {
     return admin;
   }
 
-  async adminLogin(admin: Admin, res: Response) {
+  async adminLogin(admin: Admin, res: FastifyReply) {
     const payload: Payload = {
       id: admin.id,
       email: admin.email,
@@ -126,13 +126,7 @@ export class AuthService {
       secret: Buffer.from(process.env.JWT_REFRESH_HASH_SECRET, 'base64'),
     });
 
-    await this.redisService.setValue(
-      `refresh_token:${payload.id}`,
-      hashedRefreshToken,
-      Number(process.env.JWT_REFRESH_EXPIRATION),
-    );
-
-    res.cookie('refresh_token', tokens.refresh_token, {
+    res.setCookie('refresh_token', tokens.refresh_token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
@@ -140,10 +134,19 @@ export class AuthService {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    return { access_token: tokens.access_token };
+    await this.redisService.setValue(
+      `refresh_token:${payload.id}`,
+      hashedRefreshToken,
+      Number(process.env.JWT_REFRESH_EXPIRATION),
+    );
+
+    return {
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+    };
   }
 
-  async login(user: Payload, res: Response) {
+  async login(user: Payload, res: FastifyReply) {
     const payload = { id: user.id, email: user.email, role: 'user' };
     const data = await this.generateTokens(payload);
 
@@ -159,7 +162,7 @@ export class AuthService {
       Number(process.env.JWT_REFRESH_EXPIRATION),
     );
 
-    res.cookie('refresh_token', data.refresh_token, {
+    res.setCookie('refresh_token', data.refresh_token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
@@ -265,7 +268,7 @@ export class AuthService {
     return 'Password reset successfully';
   }
 
-  async merchantLogin(merchant: Payload, res: Response) {
+  async merchantLogin(merchant: Payload, res: FastifyReply) {
     const payload = {
       id: merchant.id,
       email: merchant.email,
@@ -285,7 +288,7 @@ export class AuthService {
       Number(process.env.JWT_REFRESH_EXPIRATION),
     );
 
-    res.cookie('refresh_token', data.refresh_token, {
+    res.setCookie('refresh_token', data.refresh_token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',

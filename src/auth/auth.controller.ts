@@ -13,15 +13,17 @@ import { UsersService } from 'src/users/users.service';
 import { AuthService } from './auth.service';
 import { LocalAuthGuard } from './guards/jwt-local.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { Request, Response } from 'express';
 import { MerchantRegisterDto, RegisterDto } from './dto/register.dto';
 import { Payload } from './interfaces/payload.interface';
 import { resObj } from 'src/utils';
 import { MerchantsService } from 'src/merchants/merchants.service';
-import { Throttle } from '@nestjs/throttler';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { AdminRegisterDto } from './dto/admin-register.dto';
 import { LoginDto } from './dto/admin-login.dto';
 import { AdminGuard } from './guards/admin.guard';
+import { FastifyReply, FastifyRequest } from 'fastify';
+import fastifyCookie from '@fastify/cookie';
+import { MerchantAuthGuard } from './guards/jwt-merchant-local.guard';
 
 @Throttle({ default: { ttl: 60000, limit: 10 } })
 @Controller('auth')
@@ -42,13 +44,14 @@ export class AuthController {
   @Post('admin/login')
   async loginAdmin(
     @Body() body: LoginDto,
-    @Res({ passthrough: true }) res: Response,
+    @Res({ passthrough: true }) res: FastifyReply,
   ) {
     const admin = await this.authService.validateAdmin(body);
     if (!admin) {
       throw new UnauthorizedException('Invalid admin credentials');
     }
     const accessToken = await this.authService.adminLogin(admin, res);
+
     return resObj(200, 'Admin login successfully', accessToken);
   }
 
@@ -61,15 +64,20 @@ export class AuthController {
   }
 
   @UseGuards(LocalAuthGuard)
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   @Post('login')
   @HttpCode(200)
-  async login(@Req() req: Request, @Res() res: Response) {
+  async login(
+    @Req() req: FastifyRequest & { user: Payload },
+    @Res() res: FastifyReply,
+  ) {
     const response = await this.authService.login(req.user as Payload, res);
-    return res.json(resObj(200, 'Login successfully', response));
+    return resObj(200, 'Login successfully', response);
   }
 
   @Post('refresh')
-  async refreshToken(@Req() req: Request, res: Response) {
+  @Throttle({ default: { ttl: 60000, limit: 1 } })
+  async refreshToken(@Req() req: FastifyRequest, res: FastifyReply) {
     const refresh_token = req?.cookies['refresh_token'];
 
     const user = await this.authService.decodeToken(refresh_token);
@@ -104,7 +112,7 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Post('logout')
-  async logout(@Req() req: Request) {
+  async logout(@Req() req: FastifyRequest & { user: Payload }) {
     await this.authService.logout(req.user as Payload);
     return resObj(200, 'Logout successfully', []);
   }
@@ -117,14 +125,15 @@ export class AuthController {
     return resObj(201, 'Merchant account created successfully', []);
   }
 
+  @UseGuards(MerchantAuthGuard)
   @Post('merchant/login')
   @HttpCode(200)
   async merchantLogin(
-    @Req() req: Request,
+    @Req() req: FastifyRequest,
     @Body() body: { email?: string; password?: string },
-    @Res() res: Response,
+    @Res({ passthrough: true }) res: FastifyReply,
   ) {
-    const merchant = (req as any).merchant as Payload;
+    const merchant = req.merchant as Payload;
     const validatedMerchant = await this.authService.validateMerchant({
       email: merchant.email,
       password: body.password,
@@ -133,6 +142,6 @@ export class AuthController {
       throw new UnauthorizedException('Invalid credentials');
     }
     const response = await this.authService.merchantLogin(merchant, res);
-    return res.json(resObj(200, 'Merchant login successfully', response));
+    return resObj(200, 'Merchant login successfully', response);
   }
 }

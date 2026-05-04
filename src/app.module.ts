@@ -1,34 +1,25 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { UsersService } from './users/users.service';
 import { AuthModule } from './auth/auth.module';
 import { ProductsModule } from './products/products.module';
-import { MerchantsController } from './merchants/merchants.controller';
-import { MerchantsService } from './merchants/merchants.service';
 import { MerchantsModule } from './merchants/merchants.module';
-import { OrdersService } from './orders/orders.service';
 import { OrdersModule } from './orders/orders.module';
-import { CartsController } from './carts/carts.controller';
 import { CartsModule } from './carts/carts.module';
-import { TransactionsService } from './transactions/transactions.service';
 import { TransactionsModule } from './transactions/transactions.module';
 import { MeterialsModule } from './meterials/meterials.module';
-import { CategoriesController } from './categories/categories.controller';
-import { CategoriesService } from './categories/categories.service';
 import { CategoriesModule } from './categories/categories.module';
-import { WishlistsController } from './wishlists/wishlists.controller';
 import { WishlistsModule } from './wishlists/wishlists.module';
-import { PrismaService } from './prisma/prisma.service';
 import { PrismaModule } from './prisma/prisma.module';
-import { UsersController } from './users/users.controller';
 import { UsersModule } from './users/users.module';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
-import { AddressesService } from './addresses/addresses.service';
 import { AddressesModule } from './addresses/addresses.module';
 import { BullModule } from '@nestjs/bull';
+import { RedisService } from './common/services/redis.service';
+import { WinstonLogger } from './logger/winston.logger';
+import { PrismaService } from './prisma/prisma.service';
 
 @Module({
   imports: [
@@ -62,34 +53,21 @@ import { BullModule } from '@nestjs/bull';
         {
           name: 'default',
           ttl: 60000,
-          limit: 3,
+          limit: 30,
         },
       ],
     }),
     AddressesModule,
   ],
-  controllers: [
-    AppController,
-    UsersController,
-    MerchantsController,
-    CartsController,
-    CategoriesController,
-    WishlistsController,
-    UsersController,
-  ],
+  controllers: [AppController],
   providers: [
     AppService,
-    UsersService,
-    MerchantsService,
-    OrdersService,
-    TransactionsService,
-    CategoriesService,
-    PrismaService,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
-    AddressesService,
+    RedisService,
+    WinstonLogger,
   ],
 })
 export class AppModule {}

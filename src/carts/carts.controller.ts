@@ -15,6 +15,7 @@ import { CartsService } from './carts.service';
 import { AddToCartDto } from './dto/add-to-cart.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { resObj } from 'src/utils';
+import { FastifyRequest } from 'fastify';
 
 @Controller('carts')
 @UseGuards(JwtAuthGuard)
@@ -25,7 +26,7 @@ export class CartsController {
   async addToCart(
     @Body() addToCartDto: AddToCartDto,
     @Query('lang') lang: 'ar' | 'en',
-    @Req() req: any,
+    @Req() req: FastifyRequest,
   ) {
     const userId = req.user.id;
     const result = await this.cartsService.addToCart(
@@ -39,7 +40,7 @@ export class CartsController {
   @Patch('decrease-item')
   @UseGuards(JwtAuthGuard)
   async decreaseItem(
-    @Req() req: any,
+    @Req() req: FastifyRequest,
     @Param('productId', ParseIntPipe) productId: number,
   ) {
     const userId = req.user.id;
@@ -54,7 +55,7 @@ export class CartsController {
   @Delete('remove-item')
   @UseGuards(JwtAuthGuard)
   async removeItem(
-    @Req() req: any,
+    @Req() req: FastifyRequest,
     @Param('productId', ParseIntPipe) productId: number,
   ) {
     const userId = req.user.id;
@@ -66,7 +67,10 @@ export class CartsController {
   }
 
   @Get()
-  async getCart(@Req() req: any, @Query('language') language: 'en' | 'ar') {
+  async getCart(
+    @Req() req: FastifyRequest,
+    @Query('language') language: 'en' | 'ar',
+  ) {
     const userId = req.user.id;
     const cart = await this.cartsService.getCart(+userId, language);
 
@@ -74,7 +78,7 @@ export class CartsController {
   }
 
   @Delete('clear')
-  async clearCart(@Req() req: any) {
+  async clearCart(@Req() req: FastifyRequest) {
     const userId = req.user.id;
     const result = await this.cartsService.clearCart(+userId);
     return resObj(200, 'Cart cleared successfully', result);

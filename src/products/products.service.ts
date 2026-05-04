@@ -329,24 +329,80 @@ export class ProductsService {
     });
   }
 
-  async getProduct(id: number) {
+  async getProduct(id: number, languageCode: string = 'en', userId?: number) {
     const product = await this.prismaService.product.findUnique({
       where: {
         id,
         status: 'approved',
-        merchant: {
-          status: 'approved',
-        },
+        merchant: { status: 'approved' },
       },
-      include: {
-        translations: true,
-        images: true,
-        material: true,
-        categories: { include: { category: true } },
+      select: {
+        id: true,
+        price: true,
+        offerPrice: true,
+        mainImage: true,
+        sku: true,
+        stockQuantity: true,
+        translations: {
+          where: { languageCode },
+          select: { name: true, shortDescription: true, description: true },
+          take: 1,
+        },
+        images: { select: { image: true } },
+        categories: {
+          select: {
+            category: {
+              select: {
+                id: true,
+                CategoryTranslation: {
+                  where: { languageCode },
+                  select: { name: true },
+                  take: 1,
+                },
+              },
+            },
+          },
+        },
+        ProductAttributes: {
+          where: { languageCode },
+          select: { name: true, value: true },
+        },
+        wishlistedBy: userId
+          ? {
+              where: { userId },
+              select: { userId: true },
+              take: 1,
+            }
+          : false,
       },
     });
 
-    return product;
+    if (!product) return null;
+
+    return this.transformProductResponse(product);
+  }
+
+  private transformProductResponse(product: any) {
+    const translation = product.translations[0] || {};
+
+    return {
+      id: product.id,
+      sku: product.sku,
+      price: Number(product.price),
+      offerPrice: product.offerPrice ? Number(product.offerPrice) : null,
+      mainImage: product.mainImage,
+      stockQuantity: product.stockQuantity,
+      name: translation.name || 'Untitled Product',
+      description: translation.description || '',
+      shortDescription: translation.shortDescription || '',
+      images: product.images.map((img: any) => img.image),
+      attributes: product.ProductAttributes,
+      categories: product.categories.map((c: any) => ({
+        id: c.category.id,
+        name: c.category.CategoryTranslation[0]?.name || 'Uncategorized',
+      })),
+      isWishlisted: !!product.wishlistedBy?.length,
+    };
   }
 
   async searchProducts(

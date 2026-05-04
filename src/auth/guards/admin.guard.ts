@@ -11,8 +11,6 @@ export class AdminGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const user = request.user;
 
-    // Check if user exists and has the admin role
-    // Adjust 'admin' to match whatever string/enum you use in your DB
     if (user && user.role === 'admin') {
       return true;
     }

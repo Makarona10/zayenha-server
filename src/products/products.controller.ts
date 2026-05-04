@@ -34,6 +34,7 @@ import { Payload } from 'src/auth/interfaces/payload.interface';
 import { MerchantApprovedGuard } from 'src/auth/guards/merchant-approved.guard';
 import { SearchProductsDto } from './dto/search-products.dto';
 import { ProductAdd } from './dto/publish-product.dto';
+import { FastifyRequest } from 'fastify';
 
 const UPLOAD_DIR = '../uploads/products/';
 
@@ -103,7 +104,7 @@ export class ProductsController {
     ),
   )
   async publishProduct(
-    @Req() req: any,
+    @Req() req: FastifyRequest,
     @Body() productData: ProductAdd,
     @UploadedFiles()
     files: {
@@ -164,7 +165,7 @@ export class ProductsController {
     return this.productsService.getProducts();
   }
 
-  @Get('get-product/:id')
+  @Get('get-product/:id/:lang')
   @UseGuards(OptionalJwtAuthGuard)
   async getProduct(
     @Param(
@@ -172,13 +173,14 @@ export class ProductsController {
       new ParseIntPipe({ errorHttpStatusCode: HttpStatus.NOT_ACCEPTABLE }),
     )
     id: number,
-    @Req() req: Request,
+    @Param('lang') lang: string,
+    @Req() req: FastifyRequest,
   ) {
-    const user = req.user as Payload;
     if (!id) {
       throw new BadRequestException('Product id is required');
     }
-    const product = await this.productsService.getProduct(+id);
+    const userId = req.user?.id;
+    const product = await this.productsService.getProduct(+id, lang, userId);
     if (!product) {
       throw new NotFoundException('Product not found');
     }
@@ -189,7 +191,7 @@ export class ProductsController {
   @UseGuards(OptionalJwtAuthGuard)
   async searchProducts(
     @Query() searchProductsDto: SearchProductsDto,
-    @Req() req: Request,
+    @Req() req: FastifyRequest,
   ) {
     const user = req.user as Payload;
     const products = await this.productsService.searchProducts(
@@ -201,7 +203,10 @@ export class ProductsController {
 
   @Get('merchant-product/:id')
   @UseGuards(JwtAuthGuard, MerchantApprovedGuard)
-  async getMerchantProduct(@Param('id') id: number, @Req() req: Request) {
+  async getMerchantProduct(
+    @Param('id') id: number,
+    @Req() req: FastifyRequest,
+  ) {
     const user = req.user as Payload;
     if (user.role !== 'merchant') {
       throw new ForbiddenException('You are not allowed to access this route');
@@ -245,7 +250,7 @@ export class ProductsController {
     @Query('sortByDate') sortByDate: 'asc' | 'desc',
     @Query('page') page: number,
     @Query('limit') limit: number,
-    @Req() req: Request,
+    @Req() req: FastifyRequest,
   ) {
     if (!id) {
       throw new BadRequestException('Category id is required');
@@ -267,7 +272,7 @@ export class ProductsController {
   async updateOfferPrice(
     @Param('id') id: number,
     @Query('offerPrice') offerPrice: number,
-    @Req() req: Request,
+    @Req() req: FastifyRequest,
   ) {
     if (!id) {
       throw new BadRequestException('Product id is required');
@@ -290,7 +295,7 @@ export class ProductsController {
       new ParseIntPipe({ errorHttpStatusCode: HttpStatus.NOT_ACCEPTABLE }),
     )
     quantity: number,
-    @Req() req: Request,
+    @Req() req: FastifyRequest,
   ) {
     if (!id) {
       throw new BadRequestException('Product id is required');
@@ -308,7 +313,7 @@ export class ProductsController {
       new ParseIntPipe({ errorHttpStatusCode: HttpStatus.NOT_ACCEPTABLE }),
     )
     id: number,
-    @Req() req: Request,
+    @Req() req: FastifyRequest,
   ) {
     if (!id) {
       throw new BadRequestException('Product id is required');
