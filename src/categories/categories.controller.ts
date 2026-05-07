@@ -8,17 +8,16 @@ import {
   HttpStatus,
   NotImplementedException,
   Post,
-  UploadedFile,
-  UseInterceptors,
+  Req,
 } from '@nestjs/common';
 import { CategoriesService } from './categories.service';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
-import { unlink } from 'fs/promises';
+import { FastifyRequest } from 'fastify';
+import { extname, join } from 'path';
 import * as fs from 'fs/promises';
-import { CategoryDto } from './dto/category.dto';
 import { resObj } from 'src/utils';
+import { pipeline } from 'stream/promises';
+import { createWriteStream } from 'fs';
+import { CategoryDto } from './dto/category.dto';
 
 @Controller('categories')
 export class CategoriesController {
@@ -32,39 +31,44 @@ export class CategoriesController {
 
   //TODO: Auth part comes later after discussing business logic
   @Post('admin/add-category')
-  @UseInterceptors(
-    FileInterceptor('image', {
-      storage: diskStorage({
-        destination: process.env.UPLOADS_PATH + '/categories',
-        filename: (req, file, cb) => {
-          const uniqueSuffix =
-            Date.now() + '-' + Math.round(Math.random() * 1e9);
-          cb(null, uniqueSuffix + extname(file.originalname));
-        },
-      }),
-    }),
-  )
-  async createCategory(
-    @UploadedFile() file: Express.Multer.File,
-    @Body() body: CategoryDto,
-  ) {
+  async createCategory(@Req() req: FastifyRequest) {
+    const multipartData = await req.file();
+    if (!multipartData)
+      throw new BadRequestException('No multipart data found');
+
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const filename = uniqueSuffix + extname(multipartData.filename);
+    const savePath = join(process.env.UPLOADS_PATH, 'categories', filename);
     try {
-      if (!file) {
-        throw new BadRequestException('Image file is required');
+      await pipeline(multipartData.file, createWriteStream(savePath));
+
+      const translationsRaw = (multipartData.fields.translations as any)?.value;
+
+      if (!translationsRaw) {
+        throw new BadRequestException(
+          'The "translations" field is missing in form-data',
+        );
       }
+
+      const translations = JSON.parse(translationsRaw);
+
+      const parentIdRaw = (multipartData.fields.parentCategoryId as any)?.value;
+
       const insertedCtg = await this.categoriesService.insertCategory({
-        ...body,
-        image: file.filename,
+        translations,
+        parentCategoryId: parentIdRaw ? +parentIdRaw : undefined,
+        image: filename,
       });
       return resObj(201, 'Category created successfully', insertedCtg);
     } catch (error) {
       if (
         await fs
-          .access(file?.path)
+          .access(savePath)
           .then(() => true)
           .catch(() => false)
-      )
-        await unlink(file?.path);
+      ) {
+        await fs.unlink(savePath);
+      }
       throw new HttpException(
         error?.message || 'Could not create category',
         error?.status || error?.statusCode || HttpStatus.INTERNAL_SERVER_ERROR,

@@ -33,44 +33,34 @@ export class ProductsService {
   }
 
   async addProductToDB(
-    productData: ProductAdd,
+    dto: ProductAdd,
     mainImagePath: string,
     secondaryImagePaths: string[],
-    userId: number,
+    merchantId: number,
   ) {
     return this.prismaService.$transaction(async (tx) => {
-      const merchant = await tx.merchant.findUnique({
-        where: { id: userId },
-      });
-      if (!merchant)
-        throw new BadRequestException('Merchant account not found');
-
+      // 1. Verify Category exists
+      const mainCategoryId = dto.categories[0];
       const category = await tx.category.findUnique({
-        where: { id: productData.categories[0] },
+        where: { id: mainCategoryId },
       });
       if (!category)
-        throw new BadRequestException('Primary category not found');
+        throw new BadRequestException(`Category ${mainCategoryId} not found`);
 
-      if (productData.materialId) {
-        const material = await tx.material.findUnique({
-          where: { id: productData.materialId },
-        });
-        if (!material) throw new BadRequestException('Material not found');
-      }
-
+      // 2. Create the Product Base
       const product = await tx.product.create({
         data: {
-          merchantId: merchant.id,
-          categoryId: productData.categories[0],
-          price: new Prisma.Decimal(productData.price),
-          offerPrice: productData.offerPrice
-            ? new Prisma.Decimal(productData.offerPrice)
+          merchantId,
+          categoryId: mainCategoryId,
+          price: new Prisma.Decimal(dto.price),
+          offerPrice: dto.offerPrice
+            ? new Prisma.Decimal(dto.offerPrice)
             : null,
-          stockQuantity: productData.stockQuantity,
+          stockQuantity: dto.stockQuantity,
           mainImage: mainImagePath,
-          sku: this.generateSKU(),
+          sku: `SKU-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          materialId: dto.materialId || null,
           status: 'pending',
-          materialId: productData.materialId ?? null,
         },
       });
 
@@ -79,41 +69,21 @@ export class ProductsService {
           {
             productId: product.id,
             languageCode: 'ar',
-            name: productData.nameInArabic,
-            shortDescription: productData.shortDescriptionInArabic,
-            description: productData.descriptionInArabic,
+            name: dto.nameInArabic,
+            shortDescription: dto.shortDescriptionInArabic,
+            description: dto.descriptionInArabic,
           },
           {
             productId: product.id,
             languageCode: 'en',
-            name: productData.nameInEnglish,
-            shortDescription: productData.shortDescriptionInEnglish,
-            description: productData.descriptionInEnglish,
+            name: dto.nameInEnglish,
+            shortDescription: dto.shortDescriptionInEnglish,
+            description: dto.descriptionInEnglish,
           },
         ],
       });
 
-      if (productData.attributes && productData.attributes.length > 0) {
-        const attributeData = [];
-        productData.attributes.forEach((attr) => {
-          attributeData.push({
-            productId: product.id,
-            name: attr.nameInEnglish,
-            value: attr.valueInEnglish,
-            languageCode: 'en',
-          });
-          attributeData.push({
-            productId: product.id,
-            name: attr.nameInArabic,
-            value: attr.valueInArabic,
-            languageCode: 'ar',
-          });
-        });
-
-        await tx.productAttribute.createMany({ data: attributeData });
-      }
-
-      if (secondaryImagePaths && secondaryImagePaths.length > 0) {
+      if (secondaryImagePaths.length > 0) {
         await tx.productImage.createMany({
           data: secondaryImagePaths.map((path) => ({
             productId: product.id,
@@ -122,14 +92,33 @@ export class ProductsService {
         });
       }
 
-      if (productData.categories && productData.categories.length > 0) {
-        await tx.productCategory.createMany({
-          data: productData.categories.map((catId) => ({
-            productId: product.id,
-            categoryId: catId,
-          })),
-          skipDuplicates: true,
-        });
+      await tx.productCategory.createMany({
+        data: dto.categories.map((catId) => ({
+          productId: product.id,
+          categoryId: catId,
+        })),
+        skipDuplicates: true,
+      });
+
+      if (dto.attributes && dto.attributes.length > 0) {
+        const attributeRecords = [];
+        for (const attr of dto.attributes) {
+          attributeRecords.push(
+            {
+              productId: product.id,
+              languageCode: 'en',
+              name: attr.nameInEnglish,
+              value: attr.valueInEnglish,
+            },
+            {
+              productId: product.id,
+              languageCode: 'ar',
+              name: attr.nameInArabic,
+              value: attr.valueInArabic,
+            },
+          );
+        }
+        await tx.productAttribute.createMany({ data: attributeRecords });
       }
 
       return tx.product.findUnique({
@@ -137,8 +126,7 @@ export class ProductsService {
         include: {
           translations: true,
           images: true,
-          material: true,
-          categories: { include: { category: true } },
+          categories: true,
           ProductAttributes: true,
         },
       });

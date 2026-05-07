@@ -17,12 +17,9 @@ import { MerchantRegisterDto, RegisterDto } from './dto/register.dto';
 import { Payload } from './interfaces/payload.interface';
 import { resObj } from 'src/utils';
 import { MerchantsService } from 'src/merchants/merchants.service';
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
-import { AdminRegisterDto } from './dto/admin-register.dto';
+import { Throttle } from '@nestjs/throttler';
 import { LoginDto } from './dto/admin-login.dto';
-import { AdminGuard } from './guards/admin.guard';
 import { FastifyReply, FastifyRequest } from 'fastify';
-import fastifyCookie from '@fastify/cookie';
 import { MerchantAuthGuard } from './guards/jwt-merchant-local.guard';
 
 @Throttle({ default: { ttl: 60000, limit: 10 } })
@@ -69,7 +66,7 @@ export class AuthController {
   @HttpCode(200)
   async login(
     @Req() req: FastifyRequest & { user: Payload },
-    @Res() res: FastifyReply,
+    @Res({ passthrough: true }) res: FastifyReply,
   ) {
     const response = await this.authService.login(req.user as Payload, res);
     return resObj(200, 'Login successfully', response);
@@ -77,7 +74,10 @@ export class AuthController {
 
   @Post('refresh')
   @Throttle({ default: { ttl: 60000, limit: 1 } })
-  async refreshToken(@Req() req: FastifyRequest, res: FastifyReply) {
+  async refreshToken(
+    @Req() req: FastifyRequest,
+    @Res({ passthrough: true }) res: FastifyReply,
+  ) {
     const refresh_token = req?.cookies['refresh_token'];
 
     const user = await this.authService.decodeToken(refresh_token);

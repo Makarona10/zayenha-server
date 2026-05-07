@@ -184,6 +184,9 @@ model Product {
   ProductAttributes ProductAttribute[]
 
   @@index([status])
+  @@index([price])
+  @@index([offerPrice])
+  @@index([stockQuantity])
 }
 
 model ProductTranslation {
@@ -231,6 +234,7 @@ model ProductImage {
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@unique([productId, image])
+  @@index([productId])
 }
 
 model Material {

@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  Body,
   Controller,
   ForbiddenException,
   Get,
@@ -14,20 +13,14 @@ import {
   Post,
   Query,
   Req,
-  UnauthorizedException,
-  UploadedFiles,
   UseGuards,
-  UseInterceptors,
 } from '@nestjs/common';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { ProductsService } from './products.service';
 import { resObj } from 'src/utils';
-import { FileFieldsInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
-import * as fs from 'fs';
+import { extname, join } from 'path';
+import * as fs from 'fs/promises';
 import { removeFilesIfExists } from 'src/utils/fileUtils';
-import { Request } from 'express';
 import { OptionalJwtAuthGuard } from 'src/auth/guards/optional-jwt-auth.guard';
 import { MerchantsService } from 'src/merchants/merchants.service';
 import { Payload } from 'src/auth/interfaces/payload.interface';
@@ -35,25 +28,18 @@ import { MerchantApprovedGuard } from 'src/auth/guards/merchant-approved.guard';
 import { SearchProductsDto } from './dto/search-products.dto';
 import { ProductAdd } from './dto/publish-product.dto';
 import { FastifyRequest } from 'fastify';
+import { pipeline } from 'stream/promises';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
+import { createWriteStream } from 'fs';
+import { ConfigService } from '@nestjs/config';
 
 const UPLOAD_DIR = '../uploads/products/';
-
-function ensureUploadDir() {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-}
 
 function filenameFactory(originalName: string) {
   const random = Date.now() + '-' + Math.round(Math.random() * 1e9);
   const ext = extname(originalName) || '.jpg';
   return `${random}${ext}`;
-}
-
-function imageFileFilter(req, file, cb) {
-  if (!file.mimetype) return cb(new BadRequestException('Invalid file'), false);
-  const allowed = /jpeg|jpg|png|webp/;
-  const ok = allowed.test(file.mimetype);
-  if (ok) cb(null, true);
-  else cb(new BadRequestException('Only image files are allowed'), false);
 }
 
 function cleanupUploadedFiles(files: {
@@ -73,6 +59,7 @@ export class ProductsController {
   constructor(
     private readonly productsService: ProductsService,
     private readonly merchantService: MerchantsService,
+    private configService: ConfigService,
   ) {}
 
   @Get('homepage')
@@ -82,77 +69,67 @@ export class ProductsController {
 
   @Post('publish')
   @UseGuards(JwtAuthGuard, MerchantApprovedGuard)
-  @UseInterceptors(
-    FileFieldsInterceptor(
-      [
-        { name: 'mainImage', maxCount: 1 },
-        { name: 'secondaryImages', maxCount: 5 },
-      ],
-      {
-        storage: diskStorage({
-          destination: (req, file, cb) => {
-            ensureUploadDir();
-            cb(null, UPLOAD_DIR);
-          },
-          filename: (req, file, cb) => {
-            cb(null, filenameFactory(file.originalname));
-          },
-        }),
-        fileFilter: imageFileFilter,
-        limits: { fileSize: 5 * 1024 * 1024 },
-      },
-    ),
-  )
-  async publishProduct(
-    @Req() req: FastifyRequest,
-    @Body() productData: ProductAdd,
-    @UploadedFiles()
-    files: {
-      mainImage?: Express.Multer.File[];
-      secondaryImages?: Express.Multer.File[];
-    },
-  ) {
-    const user = req.user as { id: number; email?: string; role?: string };
+  async publishProduct(@Req() req: FastifyRequest) {
+    const user = req.user as { id: number };
+    const uploadDir = this.configService.get('UPLOADS_PATH');
 
-    if (!user || !user.id) {
-      cleanupUploadedFiles(files);
-      throw new UnauthorizedException('Unauthorized');
-    }
-
-    const isMerchantActive = await this.merchantService.isMerchantActive(
-      user.id,
-    );
-
-    if (!isMerchantActive) {
-      cleanupUploadedFiles(files);
-      throw new ForbiddenException('Merchant is not active');
-    }
-
-    const mainFile = files?.mainImage?.[0];
-    if (!mainFile) {
-      throw new BadRequestException('Main image is required');
-    }
-
-    const secondaryFiles = files?.secondaryImages ?? [];
-
-    const mainPath = mainFile.path;
-    const secondaryPaths = secondaryFiles.map((f) => f.path);
+    let mainImagePath: string = '';
+    const secondaryImagePaths: string[] = [];
+    let productData: ProductAdd | null = null;
 
     try {
-      const created = await this.productsService.addProductToDB(
+      const parts = req.parts();
+
+      for await (const part of parts) {
+        if (part.type === 'file') {
+          const uniqueSuffix =
+            Date.now() + '-' + Math.round(Math.random() * 1e9);
+          const filename = uniqueSuffix + extname(part.filename);
+          const savePath = join(uploadDir, 'products', filename);
+
+          if (part.fieldname === 'mainImage') {
+            await pipeline(part.file, createWriteStream(savePath));
+            mainImagePath = savePath;
+          } else if (part.fieldname === 'secondaryImages') {
+            await pipeline(part.file, createWriteStream(savePath));
+            secondaryImagePaths.push(savePath);
+          } else {
+            part.file.resume(); // Throw away unknown files
+          }
+        } else {
+          if (part.fieldname === 'data') {
+            const rawValue = JSON.parse(part.value as string);
+            productData = plainToInstance(ProductAdd, rawValue);
+
+            const errors = await validate(productData);
+            if (errors.length > 0) {
+              throw new BadRequestException(errors);
+            }
+          }
+        }
+      }
+
+      if (!productData)
+        throw new BadRequestException('Product data (JSON) is missing');
+      if (!mainImagePath)
+        throw new BadRequestException('Main image is required');
+
+      const result = await this.productsService.addProductToDB(
         productData,
-        mainPath,
-        secondaryPaths,
+        mainImagePath,
+        secondaryImagePaths,
         user.id,
       );
 
-      return resObj(201, 'Product published successfully', created);
+      return { statusCode: 201, message: 'Product published', data: result };
     } catch (error) {
-      const uploadedPaths = [mainPath, ...secondaryPaths];
-      removeFilesIfExists(uploadedPaths);
+      const allPaths = [mainImagePath, ...secondaryImagePaths].filter(Boolean);
+      for (const path of allPaths) {
+        await fs.unlink(path).catch(() => {});
+      }
 
       throw new HttpException(
-        error?.message || 'Failed to publish product',
+        error?.response || error?.message || 'Internal Server Error',
         error?.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

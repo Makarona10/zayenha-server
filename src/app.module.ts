@@ -19,7 +19,6 @@ import { AddressesModule } from './addresses/addresses.module';
 import { BullModule } from '@nestjs/bull';
 import { RedisService } from './common/services/redis.service';
 import { WinstonLogger } from './logger/winston.logger';
-import { PrismaService } from './prisma/prisma.service';
 
 @Module({
   imports: [

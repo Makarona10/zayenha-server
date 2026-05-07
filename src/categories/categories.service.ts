@@ -7,7 +7,11 @@ export class CategoriesService {
   constructor(private readonly prismaService: PrismaService) {}
 
   async listCategories() {
-    return this.prismaService.category.findMany();
+    return this.prismaService.category.findMany({
+      include: {
+        CategoryTranslation: true,
+      },
+    });
   }
 
   async insertCategory(category: CategoryDto) {

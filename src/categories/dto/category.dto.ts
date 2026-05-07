@@ -14,13 +14,13 @@ export class CategoryTranslationDto {
   @IsString()
   @IsNotEmpty()
   @MinLength(2)
-  @MaxLength(5) // Matches @db.VarChar(5)
+  @MaxLength(5)
   languageCode: string;
 
   @IsString()
   @IsNotEmpty()
   @MinLength(2)
-  @MaxLength(255) // Matches @@id([name, languageCode])
+  @MaxLength(255)
   name: string;
 }
 

@@ -142,7 +142,6 @@ export class AuthService {
 
     return {
       access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
     };
   }
 

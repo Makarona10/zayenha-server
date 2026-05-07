@@ -7,42 +7,51 @@ import {
   ValidateNested,
   Min,
   IsInt,
+  MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class ProductAttributeDto {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(255)
   nameInArabic: string;
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(255)
   nameInEnglish: string;
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(255)
   valueInArabic: string;
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(255)
   valueInEnglish: string;
 }
 
 export class ProductAdd {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(255)
   nameInArabic: string;
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(255)
   nameInEnglish: string;
 
   @IsString()
   @IsOptional()
+  @MaxLength(255)
   shortDescriptionInArabic?: string;
 
   @IsString()
   @IsOptional()
+  @MaxLength(255)
   shortDescriptionInEnglish?: string;
 
   @IsString()
@@ -69,7 +78,7 @@ export class ProductAdd {
   @IsArray()
   @IsInt({ each: true })
   @IsNotEmpty()
-  categories: number[]; // Array of IDs, [0] is the main category
+  categories: number[];
 
   @IsInt()
   @IsOptional()

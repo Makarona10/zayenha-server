@@ -8,12 +8,14 @@ import {
 } from '@nestjs/platform-fastify';
 import { ValidationPipe } from '@nestjs/common';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
-import { ThrottlerModule } from '@nestjs/throttler';
+import multipart from '@fastify/multipart';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter(),
+    new FastifyAdapter({
+      bodyLimit: 10 * 1024 * 1024 * 1024,
+    }),
   );
   app.useGlobalPipes(
     new ValidationPipe({
@@ -27,6 +29,16 @@ async function bootstrap() {
   });
   await app.register(fastifyRateLimit, {
     global: false,
+  });
+  await app.register(multipart, {
+    limits: {
+      fieldNameSize: 100,
+      fieldSize: 20 * 1024 * 1024 * 1024,
+      fields: 20,
+      fileSize: 20 * 1024 * 1024 * 1024,
+      files: 10,
+    },
+    // attachFieldsToBody: true,
   });
 
   app.useGlobalGuards();
